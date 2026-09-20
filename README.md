@@ -30,14 +30,6 @@ npx skills add 53able/wireframe-creator -g -a claude-code -y
 npx skills add 53able/wireframe-creator --list
 ```
 
-### Claude Cowork / Claude向け
-
-[Releases](https://github.com/53able/wireframe-creator/releases) から最新の `wireframe-creator-vX.Y.Z.zip` をダウンロードし、Claudeのスキル設定からアップロードしてください。ZIP内には `wireframe-creator/` ディレクトリがあり、その直下に `SKILL.md` と関連ファイルが収録されています。
-
-## バージョン
-
-現在のリリース番号は [VERSION](VERSION)、変更履歴は [CHANGELOG.md](CHANGELOG.md) で管理します。
-
 ## 必要環境
 
 - Python 3.10以上
