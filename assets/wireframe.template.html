@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{TITLE}} — Wireframe</title>
+  <style data-wireframe-style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2328;
+      --muted: #656d76;
+      --line: #8c959f;
+      --soft-line: #d0d7de;
+      --paper: #ffffff;
+      --wash: #f6f8fa;
+      --focus: #0969da;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--wash); }
+    button, input, select, textarea { font: inherit; }
+    button, .button {
+      min-height: 44px; padding: .65rem 1rem; border: 2px solid var(--ink);
+      border-radius: .35rem; color: var(--ink); background: var(--paper); cursor: pointer;
+    }
+    button.primary { color: var(--paper); background: var(--ink); }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--focus); outline-offset: 3px;
+    }
+    .app-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .topbar {
+      display: flex; gap: 1rem; align-items: center; justify-content: space-between;
+      padding: 1rem clamp(1rem, 3vw, 2rem); border-bottom: 2px solid var(--ink); background: var(--paper);
+    }
+    .topbar h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 1.5rem); }
+    .status { padding: .25rem .55rem; border: 1px solid var(--line); border-radius: 999px; font-size: .8rem; }
+    .workspace { display: grid; grid-template-columns: minmax(16rem, 23rem) minmax(0, 1fr); min-height: 0; }
+    .sidebar { padding: 1rem; border-right: 1px solid var(--soft-line); background: var(--paper); overflow: auto; }
+    .sidebar h2 { margin: 1.5rem 0 .5rem; font-size: 1rem; }
+    .sidebar h2:first-child { margin-top: 0; }
+    .sidebar dl, .sidebar ul { margin: 0; padding: 0; }
+    .sidebar dt { margin-top: .75rem; font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+    .sidebar dd { margin: .2rem 0 0; }
+    .sidebar li { margin: .35rem 0 0 1.1rem; }
+    .screen-nav { display: grid; gap: .5rem; }
+    .screen-nav button { width: 100%; text-align: left; border-color: var(--soft-line); }
+    .screen-nav button[aria-current="page"] { border-color: var(--ink); background: var(--wash); font-weight: 700; }
+    [data-review-focus] { margin-top: 1.5rem; padding: .85rem; border: 2px solid var(--ink); background: var(--wash); }
+    [data-review-focus] h2 { margin-top: 0; }
+    .canvas { padding: clamp(1rem, 3vw, 2rem); overflow: auto; }
+    .device {
+      width: min(100%, 72rem); min-height: 38rem; margin: 0 auto; border: 3px solid var(--ink);
+      border-radius: .7rem; background: var(--paper); box-shadow: .5rem .5rem 0 #d8dee4;
+    }
+    .device-bar { display: flex; gap: .4rem; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+    .device-bar span { width: .7rem; height: .7rem; border: 1px solid var(--line); border-radius: 50%; }
+    .screen { display: none; padding: clamp(1rem, 4vw, 3rem); }
+    .screen.is-active { display: block; }
+    .eyebrow { margin: 0 0 .5rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+    .screen h2 { margin: 0 0 .75rem; font-size: clamp(1.5rem, 4vw, 2.4rem); }
+    .lede { max-width: 60ch; color: var(--muted); }
+    .wire-box { margin: 1.25rem 0; padding: 1rem; border: 2px dashed var(--line); background: var(--wash); }
+    .form-grid { display: grid; gap: 1rem; max-width: 38rem; }
+    label { display: grid; gap: .35rem; font-weight: 650; }
+    input, select, textarea { width: 100%; min-height: 44px; padding: .65rem; border: 1px solid var(--line); background: var(--paper); }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+    .annotation { margin-top: 2rem; padding: 1rem; border-left: .35rem solid var(--ink); background: var(--wash); }
+    .annotation h3 { margin-top: 0; font-size: 1rem; }
+    .hidden { display: none !important; }
+    @media (max-width: 760px) {
+      .workspace { grid-template-columns: 1fr; }
+      .sidebar { border-right: 0; border-bottom: 1px solid var(--soft-line); }
+      .canvas { padding: 1rem; }
+      .device { min-height: 30rem; border-width: 2px; box-shadow: .25rem .25rem 0 #d8dee4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell" data-wireframe-root>
+    <header class="topbar">
+      <h1>{{TITLE}}</h1>
+      <span class="status">Low-fidelity / {{STATUS}}</span>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="ワイヤーフレーム情報">
+        <h2>検証ブリーフ</h2>
+        <dl>
+          <dt>対象ユーザー</dt><dd>{{TARGET_USER}}</dd>
+          <dt>課題</dt><dd>{{PROBLEM}}</dd>
+          <dt>ユーザー成果</dt><dd>{{USER_OUTCOME}}</dd>
+          <dt>仮説</dt><dd>{{HYPOTHESIS}}</dd>
+          <dt>最大リスク</dt><dd>{{RISKEST_ASSUMPTION}}</dd>
+          <dt>今回学ぶこと</dt><dd>{{LEARNING_GOAL}}</dd>
+        </dl>
+
+        <!-- 判断事項がない場合は、この section を要素ごと削除する -->
+        <section data-review-focus>
+          <h2>今回決めること</h2>
+          <ul>
+            <li data-decision-id="D-01">{{DECISION}}</li>
+          </ul>
+        </section>
+
+        <h2>画面</h2>
+        <nav class="screen-nav" aria-label="画面一覧">
+          <button type="button" data-nav-target="start" aria-current="page">1. {{START_SCREEN_NAME}}</button>
+          <button type="button" data-nav-target="result">2. {{RESULT_SCREEN_NAME}}</button>
+          <!-- 必要な画面だけ同じ形式で追加する -->
+        </nav>
+
+        <h2>前提</h2>
+        <ul data-assumptions>
+          <li>{{ASSUMPTION}}</li>
+        </ul>
+
+        <h2>未解決事項</h2>
+        <ul data-open-questions>
+          <li>{{OPEN_QUESTION}}</li>
+        </ul>
+
+        <h2>操作</h2>
+        <p>画面内のボタン、または画面一覧を使って遷移する。Homeキーで開始画面へ戻る。</p>
+      </aside>
+
+      <main class="canvas">
+        <div class="device" aria-live="polite">
+          <div class="device-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+
+          <section class="screen is-active" data-screen-id="start" data-start-screen aria-labelledby="start-title">
+            <p class="eyebrow">Screen 01 / Start</p>
+            <h2 id="start-title" tabindex="-1">{{START_SCREEN_NAME}}</h2>
+            <p class="lede">{{START_SCREEN_PURPOSE}}</p>
+            <div class="wire-box">{{START_SCREEN_CONTENT}}</div>
+            <div class="actions">
+              <button type="button" class="primary" data-action-target="result">{{PRIMARY_ACTION_LABEL}}</button>
+            </div>
+            <aside class="annotation">
+              <h3>検証ポイント</h3>
+              <p>{{START_SCREEN_TEST_NOTE}}</p>
+            </aside>
+          </section>
+
+          <section class="screen" data-screen-id="result" aria-labelledby="result-title">
+            <p class="eyebrow">Screen 02 / Result</p>
+            <h2 id="result-title" tabindex="-1">{{RESULT_SCREEN_NAME}}</h2>
+            <p class="lede">{{RESULT_SCREEN_PURPOSE}}</p>
+            <div class="wire-box">{{RESULT_SCREEN_CONTENT}}</div>
+            <div class="actions">
+              <button type="button" data-action-target="start">最初に戻る</button>
+            </div>
+            <aside class="annotation">
+              <h3>判断基準</h3>
+              <p>{{RESULT_SCREEN_TEST_NOTE}}</p>
+            </aside>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script data-wireframe-runtime>
+    (() => {
+      const runtime = window.__wireframeRuntime || {};
+
+      runtime.showScreen = (id, options = {}) => {
+        const screens = [...document.querySelectorAll('[data-screen-id]')];
+        const navButtons = [...document.querySelectorAll('[data-nav-target]')];
+        const next = screens.find((screen) => screen.dataset.screenId === id);
+        if (!next) return;
+        screens.forEach((screen) => screen.classList.toggle('is-active', screen === next));
+        navButtons.forEach((button) => {
+          if (button.dataset.navTarget === id) button.setAttribute('aria-current', 'page');
+          else button.removeAttribute('aria-current');
+        });
+        if (options.focus !== false) next.querySelector('h2')?.focus({ preventScroll: true });
+      };
+
+      if (!runtime.listenersInstalled) {
+        document.addEventListener('click', (event) => {
+          const trigger = event.target.closest('[data-action-target], [data-nav-target]');
+          if (!trigger) return;
+          window.__wireframeRuntime?.showScreen(
+            trigger.dataset.actionTarget || trigger.dataset.navTarget
+          );
+        });
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Home' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) {
+            event.preventDefault();
+            window.__wireframeRuntime?.showScreen(
+              document.querySelector('[data-start-screen]')?.dataset.screenId
+            );
+          }
+        });
+        runtime.listenersInstalled = true;
+      }
+
+      window.__wireframeRuntime = runtime;
+    })();
+  </script>
+</body>
+</html>

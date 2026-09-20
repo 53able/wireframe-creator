@@ -1,0 +1,426 @@
+<script data-wireframe-hot-reload>
+  (() => {
+    const previous = window.__wireframeHotReload;
+    if (previous && typeof previous.stop === 'function') previous.stop();
+
+    let source = null;
+    let timer = null;
+    let stopped = false;
+    let updating = false;
+    let queuedOptions = null;
+
+    const query = (selector, root = document) => root.querySelector(selector);
+
+    function readProgressState(root = document) {
+      const node = query('[data-generation-progress-state]', root);
+      if (!node) return null;
+      try { return JSON.parse(node.textContent); }
+      catch (_) { return null; }
+    }
+
+    function formatElapsed(milliseconds) {
+      const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainder = seconds % 60;
+      return [hours, minutes, remainder]
+        .map((value) => String(value).padStart(2, '0'))
+        .join(':');
+    }
+
+    function updateElapsed() {
+      const state = readProgressState();
+      const output = query('[data-progress-elapsed]');
+      if (!state || !output || !Number.isFinite(state.startedAtEpochMs)) return;
+      const elapsed = Math.max(0, Date.now() - state.startedAtEpochMs);
+      output.textContent = formatElapsed(elapsed);
+      output.setAttribute('datetime', `PT${Math.floor(elapsed / 1000)}S`);
+    }
+
+    function setConnection(state, message) {
+      const output = query('[data-hot-reload-status]');
+      if (!output) return;
+      output.dataset.state = state;
+      output.textContent = message;
+    }
+
+    function scopeRoot(element) {
+      return element.closest('form') || element.closest('[data-screen-id]') || element.closest('[data-wireframe-root]') || document;
+    }
+
+    function scopeKey(element) {
+      const screen = element.closest('[data-screen-id]');
+      const form = element.closest('form');
+      let formKey = '';
+      if (form) {
+        if (form.id) formKey = `form-id:${form.id}`;
+        else if (form.getAttribute('name')) formKey = `form-name:${form.getAttribute('name')}`;
+        else {
+          const parent = screen || element.closest('[data-wireframe-root]') || form.parentElement;
+          formKey = `form-index:${[...parent.querySelectorAll('form')].indexOf(form)}`;
+        }
+      }
+      return `screen:${screen?.dataset.screenId || 'global'}|${formKey}`;
+    }
+
+    function occurrenceKey(element, base, selector) {
+      const scope = scopeRoot(element);
+      const peers = [...scope.querySelectorAll(selector)].filter((candidate) => base(candidate) === base(element));
+      return `${scopeKey(element)}|${base(element)}|index:${peers.indexOf(element)}`;
+    }
+
+    function controlBase(control) {
+      const kind = control.type || control.tagName.toLowerCase();
+      const value = kind === 'radio' || kind === 'checkbox' ? `:${control.value}` : '';
+      return `name:${control.name}:${kind}${value}`;
+    }
+
+    function controlKey(control) {
+      if (control.type === 'file') return null;
+      if (control.id) return `id:${control.id}`;
+      if (control.dataset.previewKey) return `${scopeKey(control)}|preview:${control.dataset.previewKey}`;
+      if (!control.name) return null;
+      return occurrenceKey(control, controlBase, 'input, select, textarea');
+    }
+
+    function focusBase(element) {
+      if (element.dataset?.previewKey) return `preview:${element.dataset.previewKey}`;
+      if (element.dataset?.actionTarget) return `action:${element.dataset.actionTarget}`;
+      if (element.dataset?.navTarget) return `nav:${element.dataset.navTarget}`;
+      if (element.name) return `name:${element.name}:${element.type || element.tagName.toLowerCase()}`;
+      return `tag:${element.tagName.toLowerCase()}`;
+    }
+
+    function focusKey(element) {
+      if (!element || element === document.body) return null;
+      if (element.id) return `id:${element.id}`;
+      return occurrenceKey(
+        element,
+        focusBase,
+        '[data-preview-key], [data-action-target], [data-nav-target], [tabindex], input, select, textarea, button, a[href]'
+      );
+    }
+
+    function installPreviewRuntime() {
+      const runtime = window.__wireframeRuntime || {};
+      runtime.showScreen = (id, options = {}) => {
+        const screens = [...document.querySelectorAll('[data-screen-id]')];
+        const navButtons = [...document.querySelectorAll('[data-nav-target]')];
+        const next = screens.find((screen) => screen.dataset.screenId === id);
+        if (!next) return;
+        screens.forEach((screen) => screen.classList.toggle('is-active', screen === next));
+        navButtons.forEach((button) => {
+          if (button.dataset.navTarget === id) button.setAttribute('aria-current', 'page');
+          else button.removeAttribute('aria-current');
+        });
+        if (options.focus !== false) next.querySelector('h2')?.focus({ preventScroll: true });
+      };
+      if (!runtime.listenersInstalled) {
+        document.addEventListener('click', (event) => {
+          const trigger = event.target.closest('[data-action-target], [data-nav-target]');
+          if (!trigger) return;
+          window.__wireframeRuntime?.showScreen(trigger.dataset.actionTarget || trigger.dataset.navTarget);
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Home' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) {
+            event.preventDefault();
+            window.__wireframeRuntime?.showScreen(document.querySelector('[data-start-screen]')?.dataset.screenId);
+          }
+        });
+        runtime.listenersInstalled = true;
+      }
+      window.__wireframeRuntime = runtime;
+    }
+
+    function snapshotUi() {
+      const controls = {};
+      document.querySelectorAll('input, select, textarea').forEach((control) => {
+        if (control.dataset.preserveOnRefresh === 'false') return;
+        const key = controlKey(control);
+        if (!key) return;
+        if (control instanceof HTMLSelectElement && control.multiple) {
+          controls[key] = { values: [...control.selectedOptions].map((option) => option.value) };
+        } else if (control.type === 'checkbox' || control.type === 'radio') {
+          controls[key] = { checked: control.checked };
+        } else {
+          controls[key] = { value: control.value };
+        }
+      });
+      return {
+        activeScreenId: query('[data-screen-id].is-active')?.dataset.screenId || null,
+        focus: focusKey(document.activeElement),
+        controls,
+        documentScroll: [window.scrollX, window.scrollY],
+        sidebarScroll: [query('.sidebar')?.scrollLeft || 0, query('.sidebar')?.scrollTop || 0],
+        canvasScroll: [query('.canvas')?.scrollLeft || 0, query('.canvas')?.scrollTop || 0]
+      };
+    }
+
+    function applySnapshotToRoot(root, snapshot) {
+      const screens = [...root.querySelectorAll('[data-screen-id]')];
+      const active = screens.find((screen) => screen.dataset.screenId === snapshot.activeScreenId)
+        || screens.find((screen) => screen.hasAttribute('data-start-screen'));
+      if (active) {
+        screens.forEach((screen) => screen.classList.toggle('is-active', screen === active));
+        root.querySelectorAll('[data-nav-target]').forEach((button) => {
+          if (button.dataset.navTarget === active.dataset.screenId) button.setAttribute('aria-current', 'page');
+          else button.removeAttribute('aria-current');
+        });
+      }
+
+      root.querySelectorAll('input, select, textarea').forEach((control) => {
+        if (control.dataset.preserveOnRefresh === 'false') return;
+        const saved = snapshot.controls[controlKey(control)];
+        if (!saved) return;
+        if ('checked' in saved) control.checked = saved.checked;
+        else if ('values' in saved && control instanceof HTMLSelectElement) {
+          const selected = new Set(saved.values);
+          [...control.options].forEach((option) => { option.selected = selected.has(option.value); });
+        } else if ('value' in saved && control.type !== 'file') {
+          control.value = saved.value;
+        }
+      });
+    }
+
+    function restoreScroll(element, position) {
+      if (!element) return;
+      element.scrollTo(
+        Math.min(position[0], Math.max(0, element.scrollWidth - element.clientWidth)),
+        Math.min(position[1], Math.max(0, element.scrollHeight - element.clientHeight))
+      );
+    }
+
+    function restoreUi(snapshot) {
+      try {
+        const focusTarget = [...document.querySelectorAll(
+          '[data-preview-key], [data-action-target], [data-nav-target], [tabindex], input, select, textarea, button, a[href]'
+        )].find((candidate) => focusKey(candidate) === snapshot.focus);
+        focusTarget?.focus({ preventScroll: true });
+      } catch (_) { /* Preserve the update even when a browser refuses a focus operation. */ }
+      try { window.scrollTo(snapshot.documentScroll[0], snapshot.documentScroll[1]); } catch (_) {}
+      try { restoreScroll(query('.sidebar'), snapshot.sidebarScroll); } catch (_) {}
+      try { restoreScroll(query('.canvas'), snapshot.canvasScroll); } catch (_) {}
+    }
+
+    function replaceStyle(nextDocument, selector) {
+      const next = query(selector, nextDocument);
+      const current = query(selector);
+      if (!next) current?.remove();
+      else if (current) current.textContent = next.textContent;
+      else document.head.append(document.importNode(next, true));
+    }
+
+    function prepareRuntime(nextDocument) {
+      const node = query('script[data-wireframe-runtime]', nextDocument);
+      if (!node) return null;
+      // Parse before mutating the live document. The preview uses the fixed runtime contract below,
+      // so fetched runtime code is never executed during hot reload.
+      new Function(node.textContent);
+      return node;
+    }
+
+    function replaceRuntime(next) {
+      const current = query('script[data-wireframe-runtime]');
+      if (!next) {
+        current?.remove();
+        return;
+      }
+      if (current?.textContent === next.textContent) return;
+      current?.remove();
+      const marker = document.createElement('script');
+      for (const attribute of next.attributes) marker.setAttribute(attribute.name, attribute.value);
+      marker.type = 'application/wireframe-runtime';
+      marker.textContent = next.textContent;
+      document.body.append(marker);
+    }
+
+    function syncProgress(nextDocument) {
+      replaceStyle(nextDocument, 'style[data-generation-progress-style]');
+      const nextPanel = query('[data-generation-progress]', nextDocument);
+      const currentPanel = query('[data-generation-progress]');
+      if (nextPanel && currentPanel) currentPanel.replaceWith(document.importNode(nextPanel, true));
+      else if (nextPanel && !currentPanel) document.body.prepend(document.importNode(nextPanel, true));
+
+      const nextState = query('[data-generation-progress-state]', nextDocument);
+      const currentState = query('[data-generation-progress-state]');
+      if (nextState && currentState) currentState.textContent = nextState.textContent;
+      updateElapsed();
+    }
+
+    function validateNextDocument(text) {
+      if (!/^\s*<!doctype\s+html/i.test(text)) throw new Error('DOCTYPEがありません');
+      if (!/<\/body\s*>/i.test(text) || !/<\/html\s*>/i.test(text)) throw new Error('HTMLの閉じタグがありません');
+      const nextDocument = new DOMParser().parseFromString(text, 'text/html');
+      const progressNodes = nextDocument.querySelectorAll('[data-generation-progress]');
+      const rootNodes = nextDocument.querySelectorAll('[data-wireframe-root]');
+      const styleNodes = nextDocument.querySelectorAll('style[data-wireframe-style]');
+      const runtimeNodes = nextDocument.querySelectorAll('script[data-wireframe-runtime]');
+      const progressStateNodes = nextDocument.querySelectorAll('[data-generation-progress-state]');
+      const progressStyleNodes = nextDocument.querySelectorAll('[data-generation-progress-style]');
+      const hotReloadNodes = nextDocument.querySelectorAll('script[data-wireframe-hot-reload]');
+      const currentRoots = document.querySelectorAll('[data-wireframe-root]');
+      if (progressNodes.length > 1 || rootNodes.length > 1 || currentRoots.length > 1) {
+        throw new Error('更新境界が重複しています');
+      }
+      const nextProgress = progressNodes[0] || null;
+      const nextRoot = rootNodes[0] || null;
+      const currentRoot = currentRoots[0] || null;
+      if (!nextProgress && !nextRoot) throw new Error('更新境界がありません');
+      if ((currentRoot || !nextProgress) && !nextRoot) throw new Error('data-wireframe-rootがありません');
+      if (!nextRoot) {
+        const allowed = '[data-generation-progress], [data-generation-progress-state], [data-generation-progress-style], [data-wireframe-hot-reload]';
+        const unexpected = [...nextDocument.body.children].find((element) => !element.matches(allowed));
+        if (unexpected) throw new Error('境界外の本文があります。手動再読込が必要です');
+      }
+      if (nextRoot) {
+        if (styleNodes.length !== 1) throw new Error('data-wireframe-styleは1件必要です');
+        if (runtimeNodes.length !== 1) throw new Error('data-wireframe-runtimeは1件必要です');
+      }
+      if (nextProgress) {
+        if (progressStateNodes.length !== 1 || progressStyleNodes.length !== 1 || hotReloadNodes.length !== 1) {
+          throw new Error('進捗境界は各1件必要です');
+        }
+        const state = readProgressState(nextDocument);
+        const expectedIds = ['input', 'brief', 'design', 'html-generation', 'structural-validation', 'browser-validation', 'finalization'];
+        const expectedLabels = ['入力と保存場所を確認', '検証目的と対象フローを定義', '画面と状態を設計', 'HTMLを生成または部分編集', '構造検証', 'ブラウザ検証', '最終化'];
+        const validStates = new Set(['pending', 'running', 'pass', 'fail', 'not-run']);
+        const validModes = new Set(['wall', 'new', 'l0', 'l1', 'l2', 'l3']);
+        const validSteps = Array.isArray(state?.steps)
+          && state.steps.length === expectedIds.length
+          && state.steps.every((step, index) => step && typeof step === 'object'
+            && step.id === expectedIds[index]
+            && step.label === expectedLabels[index]
+            && validStates.has(step.state));
+        if (!state || state.version !== 2
+          || !Number.isInteger(state.startedAtEpochMs) || state.startedAtEpochMs < 0
+          || !validModes.has(state.mode)
+          || typeof state.title !== 'string' || typeof state.message !== 'string'
+          || !validSteps) {
+          throw new Error('進捗状態が不正です');
+        }
+      } else if (progressStateNodes.length || progressStyleNodes.length || hotReloadNodes.length) {
+        throw new Error('完成HTMLに進捗要素が残っています');
+      }
+      return { nextDocument, nextProgress, nextRoot };
+    }
+
+    function finishHotReload() {
+      source?.close();
+      source = null;
+      if (timer !== null) window.clearInterval(timer);
+      timer = null;
+      query('[data-generation-progress]')?.remove();
+      query('style[data-generation-progress-style]')?.remove();
+      query('[data-generation-progress-state]')?.remove();
+      query('script[data-wireframe-hot-reload]')?.remove();
+      stopped = true;
+      document.removeEventListener('click', handleReset);
+      window.__wireframeHotReload = null;
+    }
+
+    async function applyLatestDocument(options = {}) {
+      const preserve = options.preserve !== false;
+      if (stopped) return;
+      if (updating) {
+        queuedOptions = { preserve };
+        return;
+      }
+      updating = true;
+      let previousRoot = null;
+      let insertedRoot = null;
+      let previousStyle = null;
+      let previousTitle = document.title;
+      let previousRuntimeNode = null;
+      let rollbackSnapshot = null;
+      try {
+        const response = await fetch('/__wireframe/document', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const text = await response.text();
+        const { nextDocument, nextProgress, nextRoot } = validateNextDocument(text);
+        const runtime = prepareRuntime(nextDocument);
+        const snapshot = preserve ? snapshotUi() : {
+          activeScreenId: null, focus: null, controls: {},
+          documentScroll: [0, 0], sidebarScroll: [0, 0], canvasScroll: [0, 0]
+        };
+        rollbackSnapshot = snapshot;
+        const preparedRoot = nextRoot ? document.importNode(nextRoot, true) : null;
+        if (preparedRoot && preserve) applySnapshotToRoot(preparedRoot, snapshot);
+
+        previousRoot = query('[data-wireframe-root]');
+        previousStyle = query('style[data-wireframe-style]')?.textContent ?? null;
+        previousRuntimeNode = query('script[data-wireframe-runtime]');
+        document.title = nextDocument.title;
+        replaceStyle(nextDocument, 'style[data-wireframe-style]');
+        if (preparedRoot && previousRoot) {
+          previousRoot.replaceWith(preparedRoot);
+          insertedRoot = preparedRoot;
+        } else if (preparedRoot) {
+          document.body.append(preparedRoot);
+          insertedRoot = preparedRoot;
+        }
+        replaceRuntime(runtime);
+        if (preparedRoot) restoreUi(snapshot);
+
+        if (nextProgress) {
+          syncProgress(nextDocument);
+          setConnection('connected', '接続中');
+        } else {
+          finishHotReload();
+        }
+      } catch (error) {
+        if (insertedRoot && previousRoot && insertedRoot.isConnected) insertedRoot.replaceWith(previousRoot);
+        else if (insertedRoot && !previousRoot) insertedRoot.remove();
+        const liveStyle = query('style[data-wireframe-style]');
+        if (previousStyle !== null && liveStyle) liveStyle.textContent = previousStyle;
+        else if (previousStyle === null) liveStyle?.remove();
+        const liveRuntime = query('script[data-wireframe-runtime]');
+        if (previousRuntimeNode && liveRuntime !== previousRuntimeNode) {
+          liveRuntime?.remove();
+          document.body.append(previousRuntimeNode);
+        } else if (!previousRuntimeNode) {
+          liveRuntime?.remove();
+        }
+        document.title = previousTitle;
+        if (rollbackSnapshot) restoreUi(rollbackSnapshot);
+        setConnection('error', `更新失敗: ${error.message}`);
+      } finally {
+        updating = false;
+        if (queuedOptions && !stopped) {
+          const nextOptions = queuedOptions;
+          queuedOptions = null;
+          applyLatestDocument(nextOptions);
+        }
+      }
+    }
+
+    function handleReset(event) {
+      if (!event.target.closest('[data-reset-preview-state]')) return;
+      applyLatestDocument({ preserve: false });
+    }
+
+    function stop() {
+      if (stopped) return;
+      source?.close();
+      if (timer !== null) window.clearInterval(timer);
+      source = null;
+      timer = null;
+      stopped = true;
+      document.removeEventListener('click', handleReset);
+    }
+
+    window.__wireframeHotReload = { applyLatestDocument, formatElapsed, stop };
+    installPreviewRuntime();
+    document.addEventListener('click', handleReset);
+    updateElapsed();
+    timer = window.setInterval(updateElapsed, 1000);
+
+    if (location.protocol === 'http:' && location.hostname === '127.0.0.1' && 'EventSource' in window) {
+      source = new EventSource('/__wireframe/events');
+      source.addEventListener('revision', () => applyLatestDocument());
+      source.addEventListener('open', () => setConnection('connected', '接続中'));
+      source.addEventListener('error', () => setConnection('disconnected', '接続が切れました。再接続を待っています'));
+    } else {
+      setConnection('manual', 'ホットリロードにはローカルプレビューサーバーが必要です');
+    }
+  })();
+</script>

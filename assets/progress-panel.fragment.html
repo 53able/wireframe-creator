@@ -1,0 +1,48 @@
+<!-- WIREFRAME_PROGRESS_START -->
+<style data-generation-progress-style>
+  [data-generation-progress] {
+    margin: 0; padding: .85rem 1rem; border-bottom: 2px solid #202124;
+    color: #202124; background: #f3f4f5;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  [data-generation-progress] h1 { margin: 0; font-size: 1rem; }
+  [data-generation-progress] ol {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: .4rem; margin: .7rem 0; padding: 0; list-style: none;
+  }
+  [data-generation-progress] li {
+    min-height: 2.4rem; padding: .45rem .55rem; border: 1px solid #858b92;
+    background: #fff; font-size: .78rem; line-height: 1.35;
+  }
+  [data-generation-progress] li::before { display: inline-block; width: 1.25rem; font-weight: 800; }
+  [data-generation-progress] li[data-state="pending"]::before { content: "○"; }
+  [data-generation-progress] li[data-state="running"] { border-width: 2px; font-weight: 800; }
+  [data-generation-progress] li[data-state="running"]::before { content: "●"; }
+  [data-generation-progress] li[data-state="pass"]::before { content: "✓"; }
+  [data-generation-progress] li[data-state="fail"] { border-width: 3px; }
+  [data-generation-progress] li[data-state="fail"]::before { content: "!"; }
+  [data-generation-progress] li[data-state="not-run"] { color: #62676d; border-style: dashed; }
+  [data-generation-progress] li[data-state="not-run"]::before { content: "−"; }
+  [data-generation-progress] p { margin: .25rem 0 0; font-size: .8rem; line-height: 1.4; }
+  [data-progress-timing] { font-variant-numeric: tabular-nums; }
+  [data-reset-preview-state] { min-height: 32px; margin-left: .5rem; padding: .2rem .5rem; font-size: .75rem; }
+  [data-hot-reload-status][data-state="error"],
+  [data-hot-reload-status][data-state="disconnected"] { font-weight: 700; }
+  @media (max-width: 480px) {
+    [data-generation-progress] { padding: .7rem; }
+    [data-generation-progress] ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [data-generation-progress] li { padding: .4rem; font-size: .7rem; }
+  }
+</style>
+<section data-generation-progress data-status="{{PROGRESS_STATUS}}">
+  <h1>{{PROGRESS_TITLE}}</h1>
+  <ol>
+{{PROGRESS_STEPS}}
+  </ol>
+  <p data-progress-message role="status" aria-live="polite" aria-atomic="true">現在: {{PROGRESS_MESSAGE}}</p>
+  <p data-progress-timing>経過時間: <time data-progress-elapsed aria-live="off">00:00:00</time></p>
+  <p>プレビュー: <span data-hot-reload-status data-state="starting" role="status" aria-live="polite" aria-atomic="true">接続を開始しています</span><button type="button" data-reset-preview-state>状態をリセット</button></p>
+</section>
+<script type="application/json" data-generation-progress-state>{{PROGRESS_STATE_JSON}}</script>
+{{HOT_RELOAD_CLIENT}}
+<!-- WIREFRAME_PROGRESS_END -->
