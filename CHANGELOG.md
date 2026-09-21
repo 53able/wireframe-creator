@@ -2,6 +2,21 @@
 
 このプロジェクトの主な変更を記録します。
 
+## 2.0.0 - 2026-09-21
+
+### 破壊的変更
+
+- add completion-timestamped static handoff
+
+### ドキュメント
+
+- define agent skill versioning policy
+- remove release metadata from README
+
+### CI
+
+- automate skill release packaging
+
 ## 1.0.0 - 2026-09-20
 
 ### 新機能
