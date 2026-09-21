@@ -2,6 +2,16 @@
 
 このプロジェクトの主な変更を記録します。
 
+## 3.0.0 - 2026-09-21
+
+### 新機能
+
+- add context interview phase
+
+### 変更
+
+- Merge pull request #1 from 53able/feature/context-interview/00-add-context-questions
+
 ## 2.0.0 - 2026-09-21
 
 ### 破壊的変更
