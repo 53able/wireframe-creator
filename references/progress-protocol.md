@@ -7,6 +7,7 @@
 | 工程ID | 表示名 |
 |---|---|
 | `input` | 入力と保存場所を確認 |
+| `context` | 必要なコンテキストを確認 |
 | `brief` | 検証目的と対象フローを定義 |
 | `design` | 画面と状態を設計 |
 | `html-generation` | HTMLを生成または部分編集 |
@@ -79,6 +80,16 @@ python3 "$SKILL_ROOT/scripts/update-progress.py" set \
   "$OUTPUT_ROOT/path/to/.example-wireframe-preview.html" \
   --step input --state pass \
   --message "保存先と対象デバイスを確認しました"
+
+python3 "$SKILL_ROOT/scripts/update-progress.py" set \
+  "$OUTPUT_ROOT/path/to/.example-wireframe-preview.html" \
+  --step context --state running \
+  --message "必要なコンテキストと未確定事項を整理しています"
+
+python3 "$SKILL_ROOT/scripts/update-progress.py" set \
+  "$OUTPUT_ROOT/path/to/.example-wireframe-preview.html" \
+  --step context --state pass \
+  --message "回答と暫定仮定をコンテキスト台帳へ反映しました"
 
 python3 "$SKILL_ROOT/scripts/update-progress.py" set \
   "$OUTPUT_ROOT/path/to/.example-wireframe-preview.html" \

@@ -4,6 +4,8 @@
 - 完了時刻: `<local-completion-time>`
 - 対象ユーザー: `<target-user>`
 - 主要タスク: `<primary-task>`
+- コンテキスト逆質問: `<asked N | skipped (reason)>`
+- 推論した項目: `<none | context-items>`
 
 ## 画面と状態
 

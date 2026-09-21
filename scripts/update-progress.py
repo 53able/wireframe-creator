@@ -34,6 +34,7 @@ SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 STEPS = [
     ("input", "入力と保存場所を確認"),
+    ("context", "必要なコンテキストを確認"),
     ("brief", "検証目的と対象フローを定義"),
     ("design", "画面と状態を設計"),
     ("html-generation", "HTMLを生成または部分編集"),
