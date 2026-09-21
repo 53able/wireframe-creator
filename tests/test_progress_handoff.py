@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import json
 import re
 import subprocess
 import sys
@@ -56,6 +58,38 @@ class ProgressHandoffTests(unittest.TestCase):
         self.run_update(
             "set", preview, "--step", "finalization", "--state", "running"
         )
+
+    def test_browser_progress_schema_matches_generated_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            preview = Path(directory) / ".sample-wireframe-preview.html"
+            self.run_update("init", preview, "--mode", "new", "--title", "Sample")
+
+            source = preview.read_text(encoding="utf-8")
+            state_match = re.search(
+                r'<script type="application/json" data-generation-progress-state>'
+                r"(.*?)</script>",
+                source,
+                re.DOTALL,
+            )
+            self.assertIsNotNone(state_match)
+            assert state_match is not None
+            state = json.loads(state_match.group(1))
+
+            client = (ROOT / "assets" / "hot-reload-client.fragment.html").read_text(
+                encoding="utf-8"
+            )
+            ids_match = re.search(r"const expectedIds = (\[[^;]+\]);", client)
+            labels_match = re.search(r"const expectedLabels = (\[[^;]+\]);", client)
+            self.assertIsNotNone(ids_match)
+            self.assertIsNotNone(labels_match)
+            assert ids_match is not None and labels_match is not None
+            expected_ids = ast.literal_eval(ids_match.group(1))
+            expected_labels = ast.literal_eval(labels_match.group(1))
+
+            self.assertEqual(expected_ids, [step["id"] for step in state["steps"]])
+            self.assertEqual(
+                expected_labels, [step["label"] for step in state["steps"]]
+            )
 
     def test_finalizes_to_timestamped_canonical_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -282,7 +282,7 @@
         }
         const state = readProgressState(nextDocument);
         const expectedIds = ['input', 'context', 'brief', 'design', 'html-generation', 'structural-validation', 'browser-validation', 'finalization'];
-        const expectedLabels = ['入力と保存場所を確認', '検証目的と対象フローを定義', '画面と状態を設計', 'HTMLを生成または部分編集', '構造検証', 'ブラウザ検証', '最終化'];
+        const expectedLabels = ['入力と保存場所を確認', '必要なコンテキストを確認', '検証目的と対象フローを定義', '画面と状態を設計', 'HTMLを生成または部分編集', '構造検証', 'ブラウザ検証', '最終化'];
         const validStates = new Set(['pending', 'running', 'pass', 'fail', 'not-run']);
         const validModes = new Set(['wall', 'new', 'l0', 'l1', 'l2', 'l3']);
         const validSteps = Array.isArray(state?.steps)
