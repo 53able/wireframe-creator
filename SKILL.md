@@ -12,13 +12,16 @@ compatibility: Python 3.10+。完全な視覚検証には、レンダリング�
 ```bash
 SKILL_ROOT="<absolute-path-to-wireframe-creator>"
 OUTPUT_ROOT="<absolute-path-to-output-root>"
+PREVIEW_HTML="$OUTPUT_ROOT/path/to/.<slug>-wireframe-preview.html"
+WORK_HTML="$OUTPUT_ROOT/path/to/.<slug>-wireframe-work.html"
 ```
 
 `scripts/`、`references/`、`assets/` は `SKILL_ROOT` から、成果物とスクリーンショットは `OUTPUT_ROOT` から解決する。
 
 ## 成果物契約
 
-- 正本HTMLを、外部依存のない単一ファイル `<slug>-wireframe.html` とする。
+- 正本HTMLを、外部依存のない単一ファイル `<slug>-wireframe-YYYYMMDD-HHMMSS-mmm.html` とする。タイムスタンプは開始時刻ではなく、生成と検証が完了して最終化へ入る時点のローカル時刻とし、ミリ秒まで含める。同じ実行中に再生成しない。
+- 作業中は隠し一時ファイル `.<slug>-wireframe-preview.html` を使う。タイムスタンプなしのファイルを正本として報告せず、最終化後に一時ファイルを削除する。
 - HTML内に、検証目的、対象ユーザー、対象フローまたは判断対象、画面、必要な状態、前提、未解決事項、操作方法を含める。
 - 新規作成と改稿では、対象となる画面遷移をブラウザ上で操作可能にする。
 - 壁打ちでは、最大リスクを含む1〜2画面と、今回決める事項だけを具体化してよい。
@@ -26,41 +29,45 @@ OUTPUT_ROOT="<absolute-path-to-output-root>"
 - 根拠のない調査結果、ユーザー反応、コンバージョン値を作らない。
 - 画像、フォント、JavaScript、CSSをCDNや外部URLから読み込まない。
 - 差分画像、検証ログ、変更サマリーを正本HTMLへ組み込まず、必要な場合だけ外部の一時成果物として扱う。
-- ライブ進捗を使う場合は作業中だけ一時進捗UIを挿入し、最終化後の正本HTMLから必ず除去する。
+- 最終化後の引継ぎヘッダーへ、同一オリジンの `/__wireframe/static` から完成済み正本HTMLをダウンロードする「静的HTMLを保存」リンクを表示する。HTTPページから `file://` への直接リンクはブラウザに拒否されるため生成しない。表示中のタブは規定ブラウザのナビゲーションAPIで正本HTMLへ移し、移動を確認してからサーバーを停止する。進捗UI、引継ぎ情報、リンクは正本HTMLから必ず除去する。
 
 ## 手順
+
+### 最優先ルール: 先に進捗プレビューを開く
+
+ワイヤーフレームの作成または改稿では、作業対象、保存先、作業モードを特定した直後に進捗表示を初期化し、プレビューサーバーを起動する。取得した `PREVIEW_URL` は、要件の詳細調査、設計、HTML生成、検証へ進む前に規定ブラウザで開き、接続を確認する。これを利用者が最初に確認できる進捗表示とする。サーバー起動またはブラウザ接続が失敗した場合は、失敗理由を記録して代替手順へ進み、開いていないURLを開いたと報告しない。
 
 ### Step 1: 入力を調査し、作業モードを選ぶ
 
 1. リポジトリ内の `AGENTS.md`、`CLAUDE.md`、`CONTRIBUTING.md`、既存の成果物配置規則を確認する。
-2. 要件、ユーザーストーリー、画面仕様、既存UI、対象デバイスを探す。指定ファイルを最優先する。
-3. 同じ目的の既存ワイヤーフレームを探し、次の作業モードを1つ選ぶ。
+2. 指定ファイルと同じ目的の既存ワイヤーフレームを、作業対象と保存先を決めるために必要な範囲だけ探す。この時点では要件の詳細分析や画面設計へ進まない。
+3. 次の作業モードを1つ選ぶ。
    - **壁打ち**: 課題、仮説、画面構成が未確定である。
    - **新規作成**: 主要ユーザーと主要タスクが合意済みで、既存HTMLがない。
    - **改稿**: 既存HTMLに対する具体的な指摘または変更要求がある。
-4. 改稿では `references/iteration-protocol.md` を読み、変更をL0〜L3へ分類して変更契約を内部的に確定する。
-5. 次のいずれかが不明で、推定すると成果物が大きく変わる場合だけ、確認質問を1件にまとめる。
+4. 改稿では `references/iteration-protocol.md` を読み、変更をL0〜L3へ分類する。保存先または上書き可否だけが不明で進捗HTMLを安全に初期化できない場合は、この時点で確認質問を1件だけ行う。既存の正本HTMLを上書きせず、進捗ブロックを含まないことを確認してから `PREVIEW_HTML` へコピーする。
+5. `references/progress-protocol.md`、`references/browser-preview-protocol.md`、`references/preview-process-lifecycle.md` を読み、保存先と作業モードが確定した直後に一時進捗表示を初期化する。新規作成では `PREVIEW_HTML` を新規作成し、改稿では前項のコピーを初期化する。`--mode` には `wall`、`new`、`l1`、`l2`、`l3` のいずれかを指定する。利用者指定、プロジェクト規則、実行環境の既定指定の順で規定ブラウザを決定する。
+
+```bash
+python3 "$SKILL_ROOT/scripts/update-progress.py" init \
+  "$PREVIEW_HTML" \
+  --mode <mode> --title "ワイヤーフレーム名"
+```
+
+6. 停止に使えるPID、process handle、またはjob IDを記録してからプレビューサーバーを起動する。標準出力の `PREVIEW_URL` を、ほかの調査・設計・生成作業より先に規定ブラウザの正規のナビゲーションAPIで開き、現在URLまたはページ状態から接続を確認する。URLをチャットへ記載するだけでは完了としない。OSの既定アプリへ委ねる `open`、`start`、`xdg-open`、Pythonの `webbrowser` は使わない。サーバーを起動できない場合は `file://` で経過時間だけを表示し、ホットリロードしたと主張しない。
+
+```bash
+python3 "$SKILL_ROOT/scripts/serve-preview.py" \
+  "$PREVIEW_HTML" --port 0
+```
+
+7. ブラウザ接続の確認後に、要件、ユーザーストーリー、画面仕様、既存UI、対象デバイスを詳しく調査する。指定ファイルを最優先する。
+8. 次のいずれかが不明で、推定すると成果物が大きく変わる場合だけ、確認質問を1件にまとめる。
    - 対象ユーザー
    - 最初に検証する主要タスク
    - Web、モバイル、デスクトップの別
    - 保存場所または上書き可否
-6. 質問が不要な場合は、観測した要件と暫定仮定を分離して続行する。壁打ちでは質問だけを返さず、推奨案、代替案、今回決める事項を提示する。
-7. 新規作成とL2〜L3改稿では `references/progress-protocol.md` を読み、保存先確定後に一時進捗表示を初期化する。壁打ちとL1では、依頼または変更契約にブラウザ検証、視覚差分、または2回以上の生成・改稿反復が含まれる場合だけ使う。L0では使わない。`--mode` には作業モードに対応する `wall`、`new`、`l1`、`l2`、`l3` のいずれかを指定する。ブラウザを使う場合は `references/browser-preview-protocol.md` も読み、利用者指定、プロジェクト規則、実行環境の既定指定の順で規定ブラウザを決定する。
-
-```bash
-python3 "$SKILL_ROOT/scripts/update-progress.py" init \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html" \
-  --mode <mode> --title "ワイヤーフレーム名"
-```
-
-8. 進捗表示を使う場合は、`references/preview-process-lifecycle.md` を読み、停止に使えるPID、process handle、またはjob IDを記録してから、`init` 後にプレビューサーバーを起動する。標準出力の `PREVIEW_URL` を規定ブラウザの正規のナビゲーションAPIで開き、現在URLまたはページ状態から接続を確認する。OSの既定アプリへ委ねる `open`、`start`、`xdg-open`、Pythonの `webbrowser` は使わない。サーバーを起動できない場合は `file://` で経過時間だけを表示し、ホットリロードしたと主張しない。
-
-```bash
-python3 "$SKILL_ROOT/scripts/serve-preview.py" \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html" --port 0
-```
-
-9. `input` を `pass`、`brief` を `running` へ更新する。可視ブラウザでHTMLを開いていない場合は、リアルタイム表示または経過時間を目視確認したと主張しない。
+9. 質問が不要な場合は、観測した要件と暫定仮定を分離して続行する。壁打ちでは質問だけを返さず、推奨案、代替案、今回決める事項を提示する。`input` を `pass`、`brief` を `running` へ更新する。可視ブラウザでHTMLを開いていない場合は、リアルタイム表示または経過時間を目視確認したと主張しない。
 
 ### Step 2: 検証目的と最小オラクルを定義する
 
@@ -97,16 +104,16 @@ python3 "$SKILL_ROOT/scripts/serve-preview.py" \
 
 ### Step 5: 自己完結型HTMLを生成または部分編集する
 
-1. 進捗表示を使う場合は、正本HTMLと同じディレクトリの隠し一時作業HTML `path/to/.<slug>-wireframe-work.html` を編集対象にする。改稿では次のコマンドで進捗UIを含まない作業コピーを作る。
+1. 正本HTMLと同じディレクトリの隠し一時作業HTML `WORK_HTML` を編集対象にする。改稿では次のコマンドで進捗UIを含まない作業コピーを作る。
 
 ```bash
 python3 "$SKILL_ROOT/scripts/update-progress.py" prepare \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html" \
-  --destination "$OUTPUT_ROOT/path/to/.<slug>-wireframe-work.html"
+  "$PREVIEW_HTML" \
+  --destination "$WORK_HTML"
 ```
 
-2. 進捗表示を使わない新規作成または壁打ちでは、正本HTMLを直接生成する。進捗表示を使わない改稿では既存HTMLを正本HTMLとして直接編集する。
-3. 新規作成または壁打ちでは `assets/wireframe.template.html` を読み、構造を流用する。改稿では既存HTMLまたは一時作業HTMLの構造を維持する。
+2. 新規作成または壁打ちでは `assets/wireframe.template.html` を読み、`WORK_HTML` へ画面本体を生成する。改稿では既存HTMLから作った `WORK_HTML` の構造を維持する。タイムスタンプ付き正本HTMLはまだ作成しない。
+3. 正本ファイル名のタイムスタンプを作業開始時や中間反復時に予約しない。
 4. テンプレートのプレースホルダーを実際の情報へ置き換え、不要な任意領域を要素ごと削除する。
 5. すべてのCSSとJavaScriptをHTML内に記述する。
 6. ワイヤーフレーム名とステータス、検証ブリーフ、画面一覧またはフロー、操作可能な画面領域、前提、未解決事項、操作説明を含める。
@@ -116,13 +123,13 @@ python3 "$SKILL_ROOT/scripts/update-progress.py" prepare \
 10. `Lorem ipsum` ではなく、タスクを理解できる短い実文を使う。
 11. 実装済みと誤認させる実データ、実在顧客名、架空の成功指標を表示しない。
 12. 画面サイズを固定しすぎず、狭幅では一列、広幅ではプレビューと注釈を並べる。
-13. 進捗表示を使う場合は、一時作業HTMLを検査してから正本HTMLへ反映し、`html-generation` を `pass`、`structural-validation` を `running` へ更新する。
+13. `WORK_HTML` を検査してから `PREVIEW_HTML` へ反映し、`html-generation` を `pass`、`structural-validation` を `running` へ更新する。
 14. 可視ブラウザを開いている場合は、`stage` 後にページ全体のナビゲーションなしで本体が更新されることを確認する。同じ `data-screen-id`、`id`、`name`、`data-preview-key` が残る要素について、経過時間、表示画面、入力値、フォーカス、スクロールが維持されることも確認する。ファイル入力の選択内容は確認対象外とする。
 
 ```bash
 python3 "$SKILL_ROOT/scripts/update-progress.py" stage \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html" \
-  --source "$OUTPUT_ROOT/path/to/.<slug>-wireframe-work.html"
+  "$PREVIEW_HTML" \
+  --source "$WORK_HTML"
 ```
 
 ### Step 6: 構造検証を必ず実行する
@@ -131,7 +138,7 @@ python3 "$SKILL_ROOT/scripts/update-progress.py" stage \
 
 ```bash
 python3 "$SKILL_ROOT/scripts/validate-wireframe.py" \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html" \
+  "$PREVIEW_HTML" \
   --min-screens 1 \
   --require-actions
 ```
@@ -158,35 +165,47 @@ python3 "$SKILL_ROOT/scripts/validate-wireframe.py" \
 3. 戻る、再開始、エラーからの回復がある場合は、それぞれ1回実行する。
 4. 320px前後と1280px前後で、情報欠落、操作不能、重なりを確認する。
 5. キーボードで主要操作を実行し、フォーカス表示と遷移を確認する。
-6. 作業中の正本HTMLを再読し、プレースホルダー、根拠のない事実、不要な高忠実度表現がないことを確認する。
+6. 作業中の `PREVIEW_HTML` を再読し、プレースホルダー、根拠のない事実、不要な高忠実度表現がないことを確認する。
 7. `references/review-checklist.md` に従って最終レビューする。
 
 ### Step 9: 一時進捗を除去し、結果を報告する
 
-1. 進捗表示を使っている場合は `finalization` を `running` にし、一時進捗UIを除去して残留検査を行う。
+1. 生成、構造検証、ブラウザ検証、最終レビューを完了してから `finalization` を `running` にする。この時点より前に正本ファイル名のタイムスタンプを生成しない。
+2. `set-output` をこの時点で実行し、コマンド内部でローカル完了時刻の `YYYYMMDD-HHMMSS-mmm` を1回生成して、未使用の正本パスを割り当てる。開始時刻や外部で事前生成した時刻を渡さない。
+
+```bash
+SET_OUTPUT_RESULT="$(python3 "$SKILL_ROOT/scripts/update-progress.py" set-output \
+  "$PREVIEW_HTML" --output-dir "$OUTPUT_ROOT/path/to" --slug "<slug>")"
+CANONICAL_HTML="$(printf '%s\n' "$SET_OUTPUT_RESULT" | sed -n 's/^CANONICAL_HTML=//p')"
+test -n "$CANONICAL_HTML"
+test ! -e "$CANONICAL_HTML"
+```
+
+3. 可視ブラウザの進捗パネルで `data-static-html-url` と `data-static-html-name` が `CANONICAL_HTML` と一致したことを確認してから最終化する。
 
 ```bash
 python3 "$SKILL_ROOT/scripts/update-progress.py" finalize \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html"
+  "$PREVIEW_HTML" --output "$CANONICAL_HTML"
 python3 "$SKILL_ROOT/scripts/update-progress.py" verify-final \
-  "$OUTPUT_ROOT/path/to/<slug>-wireframe.html"
+  "$CANONICAL_HTML"
 ```
 
-2. 正本HTMLの絶対パスを、パーセントエンコード済みの `file://` URLへ変換する。文字列連結でURLを組み立てず、Pythonの `Path.resolve().as_uri()` または実行環境の同等APIを使う。
-3. プレビューサーバーを使っている場合は停止前に、同じ規定ブラウザの現在のプレビュータブを `file://` URLへ明示的に再ナビゲーションする。現在URLがその `file://` URLであり、タイトルと `[data-wireframe-root]` が表示されたことを確認する。新しいタブだけを開いて、利用者が見ている旧プレビュータブをlocalhostへ残さない。
-4. 静的HTML上で開始画面から主要タスクの完了状態まで操作し、正本HTML内の `script[data-wireframe-runtime]` を検証する。規定ブラウザを利用できない場合は別ブラウザへ無断で切り替えず、静的HTML引継ぎと操作検証を `not run` として理由を報告する。
-5. Step 6の構造検証を再実行する。合格後、一時作業HTMLを削除する。
-6. 最終化後の正本HTMLへ `startedAtEpochMs`、`data-progress-elapsed`、`EventSource`、プレビュー用URLが残っていないことを確認する。`file://` への再ナビゲーションと表示確認が成功した場合だけ、`references/preview-process-lifecycle.md` に従ってプレビューサーバーを停止・回収し、生存していないこと、zombie/defunct状態でないこと、URLが応答しないことを確認する。静的HTML引継ぎが失敗または未実施ならサーバーを停止せず `intentional-handoff` とし、残存URLとPIDまたはhandleを報告する。
-7. すべての作業モードで `assets/completion-report.template.md` を読み、その構造で結果を報告する。改稿では、テンプレートの改稿専用欄へ今回の変更、変更していない範囲、再レビュー対象を記録する。
-8. 実行したコマンドと結果を記録し、静的HTML引継ぎ、プレビューサーバー状態、停止後の生存・URL確認、ホットリロード、経過時間、ブラウザ操作、狭幅、広幅、視覚差分の未実施項目を `not run` と明記する。進捗状態には `not-run`、人向け報告には `not run（理由）` を使う。
-9. ユーザー評価を実施していない場合は、「ユーザー検証済み」「使いやすさを確認済み」と記載しない。
-10. ベースラインを、ユーザーが変更を承認する前に更新しない。
+4. `CANONICAL_HTML` の絶対パスを、パーセントエンコード済みの `file://` URLへ変換する。文字列連結でURLを組み立てず、Pythonの `Path.resolve().as_uri()` または実行環境の同等APIを使う。この値をHTTPページ内のクリック可能な `href` には設定しない。
+5. `finalize` によるホットリロード後、同じプレビュータブの先頭へ `[data-static-html-handoff]` と `[data-static-html-link]` が表示されることを確認する。リンクは同一オリジンの `/__wireframe/static` を指し、`download` 属性の値が完了時刻付き正本ファイル名であることを確認する。可能ならリンクを1回操作し、同名の完成済みHTMLをダウンロードできることを確認する。
+6. ダウンロードリンクとは別に、Step 4の `file://` URLを規定ブラウザのナビゲーションAPIへ渡し、現在のプレビュータブを正本HTMLへ移す。現在URLがそのURLであり、タイトルと `[data-wireframe-root]` が表示されたことを確認するまでサーバーを停止しない。新しいタブだけを開いて、利用者が見ている旧プレビュータブをlocalhostへ残さない。
+7. 静的HTML上で開始画面から主要タスクの完了状態まで操作し、正本HTML内の `script[data-wireframe-runtime]` を検証する。規定ブラウザを利用できない場合、保存リンクが表示されない場合、または正本HTMLへ移動できない場合は別ブラウザへ無断で切り替えず、サーバーを停止しない。静的HTML引継ぎと操作検証を `not run` または `fail` とし、サーバーを `intentional-handoff` として理由、URL、PIDまたはhandleを報告する。
+8. `CANONICAL_HTML` に対してStep 6の構造検証を再実行する。最終化後の正本HTMLへ `startedAtEpochMs`、`data-progress-elapsed`、`EventSource`、プレビュー用URLが残っていないことも確認する。
+9. 正本HTMLへの再ナビゲーションと表示確認が成功した場合だけ、`references/preview-process-lifecycle.md` に従ってプレビューサーバーを停止・回収し、生存していないこと、zombie/defunct状態でないこと、URLが応答しないことを確認する。成功後に今回の `PREVIEW_HTML` と `WORK_HTML` を削除し、今回生成した完了時刻付き正本HTMLが残ることを確認する。既存の履歴ファイルは削除しない。静的HTML引継ぎが失敗または未実施なら一時ファイルを削除せず、サーバーを `intentional-handoff` として残存URLとPIDまたはhandleを報告する。
+10. すべての作業モードで `assets/completion-report.template.md` を読み、その構造で結果を報告する。改稿では、テンプレートの改稿専用欄へ今回の変更、変更していない範囲、再レビュー対象を記録する。
+11. 実行したコマンドと結果を記録し、完了時刻付きファイル名、静的HTML保存リンク、静的HTML引継ぎ、プレビューサーバー状態、停止後の生存・URL確認、ホットリロード、経過時間、ブラウザ操作、狭幅、広幅、視覚差分の未実施項目を `not run` と明記する。進捗状態には `not-run`、人向け報告には `not run（理由）` を使う。
+12. ユーザー評価を実施していない場合は、「ユーザー検証済み」「使いやすさを確認済み」と記載しない。
+13. ベースラインを、ユーザーが変更を承認する前に更新しない。
 
 ## エラー処理
 
 - 入力要件が矛盾する場合は、矛盾を一覧化して停止し、優先する要件を質問する。
 - 対象ユーザーまたは主要タスクが特定できない場合は、空の画面群を作らず、確認質問を1件だけ行う。
-- 既存ファイルと保存先が衝突する場合は、無断で上書きせず、既存HTMLを改稿対象として確認する。
+- 既存の正本HTMLは改稿元として扱い、無断で上書きしない。`set-output` は未使用の完了時刻付きパスを割り当て、`finalize` はno-clobberで正本を作成する。競合で正本作成を拒否された場合は `set-output` を再実行し、新しい未使用パスを設定する。
 - `validate-wireframe.py` が遷移先不明を報告した場合は、対象画面を追加するか、不要な操作を削除する。
 - 規定ブラウザの起動、接続、または自動化が失敗した場合は、同じ操作を盲目的に繰り返さず、HTMLと現在の画面状態を確認する。実行環境が代替を明示的に許可していない限り、別ブラウザへ無断で切り替えない。
 - 最終化後の `file://` 再ナビゲーションに失敗した場合は、先にプレビューサーバーを停止しない。現在のlocalhost表示を維持し、静的HTML引継ぎを `not run` または `fail`、サーバーを `intentional-handoff` として残存URLとPIDまたはhandleを報告する。
@@ -196,4 +215,5 @@ python3 "$SKILL_ROOT/scripts/update-progress.py" verify-final \
 - プレビューサーバーが起動しない場合は外部アドレスへのバインドへ切り替えず、`file://`表示または進捗表示なしで続行してホットリロードを`not run`と報告する。
 - SSE接続または部分更新に失敗した場合はフルリロードを自動実行せず、現在のDOMを維持して手動再読込の要否を報告する。
 - 一時作業HTMLの反映に失敗した場合は正本HTMLを上書きせず、`stage` のエラーを解消して再実行する。
+- `set-output` 後にブラウザへ完了時刻付きファイル名が反映されない場合は `finalize` へ進まない。`finalize --output` が失敗した場合は一時プレビューHTMLを維持し、正本HTMLが作成されたかを確認してから再試行方法を決める。
 - 高忠実度デザインが要求された場合は、低忠実度の検証用成果物との違いを説明し、高忠実度デザインを扱うスキルまたは工程へ切り分ける。

@@ -12,6 +12,7 @@ import stat
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 
@@ -26,6 +27,10 @@ STATE_RE = re.compile(
 )
 BODY_RE = re.compile(r"(<body\b[^>]*>)", re.IGNORECASE)
 DOCTYPE_RE = re.compile(r"^\s*<!doctype\s+html", re.IGNORECASE)
+TIMESTAMPED_WIREFRAME_RE = re.compile(
+    r".+-wireframe-\d{8}-\d{6}-\d{3}\.html$", re.IGNORECASE
+)
+SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 STEPS = [
     ("input", "入力と保存場所を確認"),
@@ -93,6 +98,55 @@ def atomic_write(path: Path, content: str) -> None:
     except Exception:
         temp_path.unlink(missing_ok=True)
         raise
+
+
+def atomic_create(path: Path, content: str) -> None:
+    """Create a file atomically without replacing an existing destination."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    temp_path = Path(handle.name)
+    try:
+        with handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o644)
+        try:
+            os.link(temp_path, path)
+        except FileExistsError as exc:
+            raise ValueError(f"Refusing to overwrite existing canonical output: {path}") from exc
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def validate_timestamped_wireframe_path(path: Path) -> None:
+    if not TIMESTAMPED_WIREFRAME_RE.fullmatch(path.name):
+        raise ValueError(
+            "Canonical wireframe filename must end with "
+            "'-wireframe-YYYYMMDD-HHMMSS-mmm.html': "
+            f"{path.name}"
+        )
+
+
+def allocate_completion_path(output_dir: Path, slug: str) -> Path:
+    if not SLUG_RE.fullmatch(slug):
+        raise ValueError("--slug must be lowercase kebab-case.")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for _ in range(1000):
+        now = datetime.now().astimezone()
+        timestamp = now.strftime("%Y%m%d-%H%M%S-") + f"{now.microsecond // 1000:03d}"
+        candidate = output_dir / f"{slug}-wireframe-{timestamp}.html"
+        if not candidate.exists():
+            return candidate
+        time.sleep(0.001)
+    raise ValueError("Could not allocate an unused completion-timestamped output path.")
 
 
 def validate_html_document(source: str, path: Path) -> None:
@@ -191,7 +245,9 @@ def json_for_script(state: dict[str, object]) -> str:
     return json.dumps(state, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
-def render_block(state: dict[str, object]) -> str:
+def render_block(
+    state: dict[str, object], static_html_url: str = "", static_html_name: str = ""
+) -> str:
     template_path = skill_root() / "assets" / "progress-panel.fragment.html"
     client_path = skill_root() / "assets" / "hot-reload-client.fragment.html"
     template = read_text(template_path)
@@ -213,6 +269,8 @@ def render_block(state: dict[str, object]) -> str:
         "{{PROGRESS_MESSAGE}}": html.escape(str(state["message"])),
         "{{PROGRESS_STEPS}}": "\n".join(items),
         "{{PROGRESS_STATE_JSON}}": json_for_script(state),
+        "{{STATIC_HTML_URL}}": html.escape(static_html_url, quote=True),
+        "{{STATIC_HTML_NAME}}": html.escape(static_html_name, quote=True),
         "{{HOT_RELOAD_CLIENT}}": hot_reload_client,
     }
     rendered = template
@@ -267,13 +325,18 @@ def command_init(args: argparse.Namespace) -> None:
                 print(f"SUCCESS: Progress is already initialized in {path}; no duplicate was added.")
             return
         title = args.title or path.stem
-        output = inject_after_body(source, render_block(initial_state(args.mode, title)), path)
+        output = inject_after_body(
+            source,
+            render_block(initial_state(args.mode, title)),
+            path,
+        )
     else:
         title = args.title or path.stem
         shell_path = skill_root() / "assets" / "progress-shell.template.html"
         shell = read_text(shell_path)
         output = shell.replace("{{TITLE}}", html.escape(title)).replace(
-            "{{PROGRESS_BLOCK}}", render_block(initial_state(args.mode, title))
+            "{{PROGRESS_BLOCK}}",
+            render_block(initial_state(args.mode, title)),
         )
         if re.search(r"\{\{[^{}]+\}\}", output):
             raise ValueError("Progress shell has unresolved placeholders.")
@@ -338,6 +401,28 @@ def command_fail(args: argparse.Namespace) -> None:
     command_set(args)
 
 
+def command_set_output(args: argparse.Namespace) -> None:
+    path: Path = args.html
+    output_path = allocate_completion_path(args.output_dir.resolve(), args.slug)
+    if path.resolve() == output_path.resolve():
+        raise ValueError("Generated output must differ from the temporary preview HTML path.")
+    validate_timestamped_wireframe_path(output_path)
+    source = read_text(path)
+    block = extract_block(source)
+    state = parse_state(block)
+    new_block = render_block(
+        state,
+        output_path.resolve().as_uri(),
+        output_path.name,
+    )
+    result = BLOCK_RE.sub(lambda _: new_block, source, count=1)
+    if strip_block(source) != strip_block(result):
+        raise ValueError("Output handoff update would modify content outside the progress block.")
+    atomic_write(path, result)
+    print(f"CANONICAL_HTML={output_path.resolve()}")
+    print(f"SUCCESS: Set completion-timestamped canonical output to {output_path}.")
+
+
 def command_prepare(args: argparse.Namespace) -> None:
     source_path: Path = args.html
     destination: Path = args.destination
@@ -369,11 +454,13 @@ def command_stage(args: argparse.Namespace) -> None:
 
 def command_finalize(args: argparse.Namespace) -> None:
     path: Path = args.html
+    output_path: Path = args.output
+    if path.resolve() == output_path.resolve():
+        raise ValueError("--output must differ from the temporary preview HTML path.")
+    validate_timestamped_wireframe_path(output_path)
     source = read_text(path)
     if not validate_markers(source):
-        command_verify_final(args)
-        print(f"SUCCESS: {path} was already finalized.")
-        return
+        raise ValueError("Temporary preview HTML is already finalized; canonical output was not created.")
     state = parse_state(extract_block(source))
     for item in state["steps"]:
         if item["id"] == "finalization":
@@ -383,10 +470,25 @@ def command_finalize(args: argparse.Namespace) -> None:
             raise ValueError(
                 f"Cannot finalize while step '{item['id']}' is '{item['state']}'. Mark it pass or not-run first."
             )
-    output = strip_block(source)
-    validate_html_document(output, path)
-    atomic_write(path, output)
-    print(f"SUCCESS: Removed temporary progress UI from {path}.")
+    block = extract_block(source)
+    static_url_match = re.search(r'data-static-html-url="([^"]*)"', block)
+    static_name_match = re.search(r'data-static-html-name="([^"]*)"', block)
+    if not static_url_match or not static_name_match:
+        raise ValueError("Run set-output before finalize to set the timestamped canonical output.")
+    if html.unescape(static_url_match.group(1)) != output_path.resolve().as_uri():
+        raise ValueError("Final --output does not match the output URL prepared by set-output.")
+    if html.unescape(static_name_match.group(1)) != output_path.name:
+        raise ValueError("Final --output filename does not match the name prepared by set-output.")
+    clean = strip_block(source)
+    validate_html_document(clean, path)
+    atomic_create(output_path, clean)
+    try:
+        atomic_write(path, clean)
+    except Exception:
+        output_path.unlink(missing_ok=True)
+        raise
+    print(f"CANONICAL_HTML={output_path.resolve()}")
+    print(f"SUCCESS: Wrote timestamped canonical HTML and finalized preview content.")
 
 
 def command_verify_final(args: argparse.Namespace) -> None:
@@ -403,6 +505,11 @@ def command_verify_final(args: argparse.Namespace) -> None:
         "data-progress-timing",
         "data-hot-reload-status",
         "data-reset-preview-state",
+        "data-static-html-link",
+        "data-static-html-handoff",
+        "data-static-html-pending",
+        "data-static-html-url",
+        "data-static-html-name",
         "data-generation-progress-style",
         "data-wireframe-hot-reload",
         "__wireframeHotReload",
@@ -449,6 +556,14 @@ def build_parser() -> argparse.ArgumentParser:
     fail_parser.add_argument("--message", required=True)
     fail_parser.set_defaults(handler=command_fail)
 
+    output_parser = subparsers.add_parser(
+        "set-output", help="Allocate and set a completion-timestamped canonical output"
+    )
+    output_parser.add_argument("html", type=Path)
+    output_parser.add_argument("--output-dir", type=Path, required=True)
+    output_parser.add_argument("--slug", required=True)
+    output_parser.set_defaults(handler=command_set_output)
+
     prepare_parser = subparsers.add_parser("prepare", help="Create a progress-free working copy")
     prepare_parser.add_argument("html", type=Path)
     prepare_parser.add_argument("--destination", type=Path, required=True)
@@ -459,8 +574,11 @@ def build_parser() -> argparse.ArgumentParser:
     stage_parser.add_argument("--source", type=Path, required=True)
     stage_parser.set_defaults(handler=command_stage)
 
-    finalize_parser = subparsers.add_parser("finalize", help="Remove temporary progress UI")
+    finalize_parser = subparsers.add_parser(
+        "finalize", help="Write timestamped canonical HTML and finalize temporary preview content"
+    )
     finalize_parser.add_argument("html", type=Path)
+    finalize_parser.add_argument("--output", type=Path, required=True)
     finalize_parser.set_defaults(handler=command_finalize)
 
     verify_parser = subparsers.add_parser("verify-final", help="Verify no progress UI remains")

@@ -48,6 +48,8 @@
 - [ ] ブラウザ操作検証の実施有無を明記した
 - [ ] ユーザー評価未実施なら、検証済みと主張していない
 - [ ] 架空の利用データや成功指標を掲載していない
+- [ ] 正本ファイル名が `<slug>-wireframe-YYYYMMDD-HHMMSS-mmm.html` で、タイムスタンプを生成・検証完了後に確定した
+- [ ] タイムスタンプなしの一時プレビューHTMLを正本として報告していない
 - [ ] `WIREFRAME_PROGRESS` マーカーと一時進捗属性が残っていない
 - [ ] 進捗表示を使用した場合、`startedAtEpochMs` と `data-progress-elapsed` が残っていない
 - [ ] 進捗表示を使用した場合、`EventSource` とプレビュー用URLが残っていない
@@ -59,6 +61,7 @@
 - [ ] 静的HTML上でタイトル、`[data-wireframe-root]`、主要フロー、通常ランタイムを確認した。または `not run` と理由を記録した
 - [ ] 起動時にプレビューサーバーのPID、process handle、またはjob IDを記録した
 - [ ] 静的HTML引継ぎの成功後にだけプレビューサーバーを停止・回収し、停止後も画面が表示されることを確認した
+- [ ] サーバー停止後に一時プレビューHTMLと一時作業HTMLを削除し、完了時刻付き正本HTMLだけを残した
 - [ ] 停止後にPIDまたはhandleの不在、zombie/defunct状態の不在、プレビューURLの応答停止を確認した
 - [ ] 静的HTMLへ引き継げなかった場合、プレビューサーバーを停止せず `intentional-handoff` として残存URLとPIDまたはhandleを報告した
 - [ ] 失敗状態のHTMLを正本HTMLとして報告していない

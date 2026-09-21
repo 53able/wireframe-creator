@@ -13,7 +13,7 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 
 ALLOWED_HOST = "127.0.0.1"
@@ -45,6 +45,34 @@ def build_handler(target: Path) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(payload)
 
+        def send_static_download(self, payload: bytes, filename: str) -> None:
+            if b"<!-- WIREFRAME_PROGRESS_START -->" in payload:
+                self.send_bytes(
+                    HTTPStatus.CONFLICT,
+                    "text/plain; charset=utf-8",
+                    "Static HTML is not ready yet. Complete finalization first.\n".encode(),
+                )
+                return
+            if not re.fullmatch(r".+-wireframe-\d{8}-\d{6}-\d{3}\.html", filename, re.IGNORECASE):
+                self.send_bytes(
+                    HTTPStatus.BAD_REQUEST,
+                    "text/plain; charset=utf-8",
+                    b"Invalid timestamped wireframe filename.\n",
+                )
+                return
+            encoded_name = quote(filename, safe="")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header(
+                "Content-Disposition",
+                f"attachment; filename=\"wireframe.html\"; filename*=UTF-8''{encoded_name}",
+            )
+            self.end_headers()
+            self.wfile.write(payload)
+
         def valid_host(self) -> bool:
             values = self.headers.get_all("Host", [])
             if len(values) != 1:
@@ -66,8 +94,9 @@ def build_handler(target: Path) -> type[BaseHTTPRequestHandler]:
                     b"Invalid Host header\n",
                 )
                 return
-            path = urlsplit(self.path).path
-            if path in {"/", "/__wireframe/document"}:
+            request_url = urlsplit(self.path)
+            path = request_url.path
+            if path in {"/", "/__wireframe/document", "/__wireframe/static"}:
                 try:
                     payload = target.read_bytes()
                 except FileNotFoundError:
@@ -77,7 +106,11 @@ def build_handler(target: Path) -> type[BaseHTTPRequestHandler]:
                         f"Wireframe file does not exist: {target}\n".encode(),
                     )
                     return
-                self.send_bytes(HTTPStatus.OK, "text/html; charset=utf-8", payload)
+                if path == "/__wireframe/static":
+                    filename = parse_qs(request_url.query).get("filename", [""])[0]
+                    self.send_static_download(payload, filename)
+                else:
+                    self.send_bytes(HTTPStatus.OK, "text/html; charset=utf-8", payload)
                 return
             if path == "/__wireframe/events":
                 self.stream_events()

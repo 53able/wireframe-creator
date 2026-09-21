@@ -27,22 +27,24 @@
 
 ## 3. 最終化後の静的HTML引継ぎ
 
-最終化後は、プレビューサーバーを停止する前に、利用者が見ている同じ規定ブラウザの現在のプレビュータブを正本HTMLの `file://` URLへ移す。新しいタブだけを開いてlocalhostの旧タブを残す方法は、表示の連続性を保証しないため引継ぎ成功としない。
+最終化後は、プレビューサーバーを停止する前に、利用者が見ている同じ規定ブラウザの現在のプレビュータブを正本HTMLの `file://` URLへ移す。HTTPページから `file://` へのクリック可能なリンクはChromium系ブラウザで拒否されるため生成しない。代わりに、最終化のホットリロード後は `[data-static-html-handoff]` 内へ、同一オリジンから完成HTMLを保存できるリンクを表示する。新しいタブだけを開いてlocalhostの旧タブを残す方法は、表示の連続性を保証しないため引継ぎ成功としない。
 
 正本HTMLのURLは手作業で連結せず、絶対パスから実行環境のパスAPIで生成する。Pythonを使える場合は次の方法で、空白、日本語、`#` などを含むパスを正しくエンコードする。
 
 ```bash
-STATIC_URL="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$OUTPUT_ROOT/path/to/example-wireframe.html")"
+STATIC_URL="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$CANONICAL_HTML")"
 ```
 
 引継ぎは次の順序で行う。
 
-1. `finalize` と `verify-final` を完了する。
-2. 規定ブラウザのナビゲーションAPIへ `STATIC_URL` を渡し、現在のプレビュータブを再ナビゲーションする。
-3. ブラウザが示す現在URLが `STATIC_URL` と一致し、タイトルと `[data-wireframe-root]` が表示されたことを確認する。
-4. 開始画面から主要タスクの完了状態まで操作し、正本HTML内の通常ランタイムが動作することを確認する。
-5. ここまで成功した後だけ、`preview-process-lifecycle.md` に従ってプレビューサーバーを停止・回収し、生存していないこと、zombie/defunct状態でないこと、URLが応答しないことを確認する。
-6. サーバー停止後も現在URLが `file://` のままで、画面が表示されていることを確認する。
+1. 生成と検証の完了時刻から `CANONICAL_HTML` を決定し、`set-output`、`finalize --output`、`verify-final` を完了する。開始時刻をファイル名へ使わない。
+2. 現在のプレビュータブで `[data-static-html-handoff] [data-static-html-link]` が表示され、リンクが同一オリジンの `/__wireframe/static` を指し、`download` 属性の値が完了時刻付き正本ファイル名であることを確認する。可能ならダウンロードを1回実行し、完成HTMLであることを確認する。
+3. 引継ぎヘッダーの `data-static-html-url` が `STATIC_URL` と一致することを確認する。この値をページ内リンクとしてクリックしない。
+4. 規定ブラウザのナビゲーションAPIへ `STATIC_URL` を直接渡し、現在のプレビュータブを再ナビゲーションする。
+5. ブラウザが示す現在URLが `STATIC_URL` と一致し、タイトルと `[data-wireframe-root]` が表示されたことを確認する。
+6. 開始画面から主要タスクの完了状態まで操作し、正本HTML内の通常ランタイムが動作することを確認する。
+7. ここまで成功した後だけ、`preview-process-lifecycle.md` に従ってプレビューサーバーを停止・回収し、生存していないこと、zombie/defunct状態でないこと、URLが応答しないことを確認する。
+8. サーバー停止後も現在URLが `file://` のままで、画面が表示されていることを確認する。
 
 作業中DOMの残存状態だけを根拠に最終版を検証済みとしない。現在URL、主要画面、操作結果、サーバー停止後の表示状態を記録する。ブラウザ用スキルがスクリーンショットやスナップショットを提供する場合は、必要な検証範囲に限って利用する。
 
