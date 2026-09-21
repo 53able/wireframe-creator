@@ -43,6 +43,7 @@ class ProgressHandoffTests(unittest.TestCase):
     def complete_steps(self, preview: Path) -> None:
         for step in (
             "input",
+            "context",
             "brief",
             "design",
             "html-generation",
@@ -78,6 +79,7 @@ class ProgressHandoffTests(unittest.TestCase):
             self.assertLessEqual(completed_at, after)
 
             prepared = preview.read_text(encoding="utf-8")
+            self.assertIn('"id":"context"', prepared)
             self.assertIn(canonical.resolve().as_uri(), prepared)
             self.assertIn(canonical.name, prepared)
             self.assertFalse(canonical.exists())
