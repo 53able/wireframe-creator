@@ -28,6 +28,7 @@ WORK_HTML="$OUTPUT_ROOT/path/to/.<slug>-wireframe-work.html"
 - グレースケールを基本とし、完成デザインと誤認させない。
 - 根拠のない調査結果、ユーザー反応、コンバージョン値を作らない。
 - 画像、フォント、JavaScript、CSSをCDNや外部URLから読み込まない。
+- スタイル基盤には同梱済みのPico CSS v2.1.1を使う。正本HTML内の`style[data-pico-css]`を削除、外部参照へ変更、または別バージョンへ置換しない。同要素にはPico CSSのMITライセンス全文を保持する。
 - 差分画像、検証ログ、変更サマリーを正本HTMLへ組み込まず、必要な場合だけ外部の一時成果物として扱う。
 - 最終化後の引継ぎヘッダーへ、同一オリジンの `/__wireframe/static` から完成済み正本HTMLをダウンロードする「静的HTMLを保存」リンクを表示する。HTTPページから `file://` への直接リンクはブラウザに拒否されるため生成しない。表示中のタブは規定ブラウザのナビゲーションAPIで正本HTMLへ移し、移動を確認してからサーバーを停止する。進捗UI、引継ぎ情報、リンクは正本HTMLから必ず除去する。
 
@@ -109,10 +110,15 @@ python3 "$SKILL_ROOT/scripts/update-progress.py" prepare \
   --destination "$WORK_HTML"
 ```
 
-2. 新規作成または壁打ちでは `assets/wireframe.template.html` を読み、`WORK_HTML` へ画面本体を生成する。改稿では既存HTMLから作った `WORK_HTML` の構造を維持する。タイムスタンプ付き正本HTMLはまだ作成しない。
+2. 新規作成または壁打ちでは、次のコマンドで `assets/wireframe.template.html` と同梱済みPico CSSを組み立てて `WORK_HTML` を作る。テンプレートを直接コピーして `{{PICO_STYLE}}` を手作業で解決しない。改稿では既存HTMLから作った `WORK_HTML` の構造を維持する。タイムスタンプ付き正本HTMLはまだ作成しない。
+
+```bash
+python3 "$SKILL_ROOT/scripts/render-wireframe-template.py" \
+  --output "$WORK_HTML"
+```
 3. 正本ファイル名のタイムスタンプを作業開始時や中間反復時に予約しない。
 4. テンプレートのプレースホルダーを実際の情報へ置き換え、不要な任意領域を要素ごと削除する。
-5. すべてのCSSとJavaScriptをHTML内に記述する。
+5. すべてのCSSとJavaScriptをHTML内に記述する。フォーム、ボタン、タイポグラフィ、基本レイアウトにはPico CSSを優先し、`style[data-wireframe-style]`の追加CSSは画面切替、キャンバス、注釈、低忠実度表現などワイヤーフレーム固有の用途に限定する。
 6. ワイヤーフレーム名とステータス、検証ブリーフ、画面一覧またはフロー、操作可能な画面領域、前提、未解決事項、操作説明を含める。
 7. 判断事項がある場合だけ `data-review-focus` と `data-decision-id="D-xx"` を使い、今回決める事項を短く表示する。
 8. `<button>`、`<nav>`、`<main>`、見出し、ラベルなどの意味的HTMLを優先する。
@@ -143,7 +149,7 @@ python3 "$SKILL_ROOT/scripts/validate-wireframe.py" \
 2. 新規作成または2画面以上の改稿では、画面数に応じて `--min-screens 2` 以上を指定する。
 3. `SKILL_ROOT` と `OUTPUT_ROOT` を使い、スクリプトと検証対象HTMLをそれぞれの起点から解決する。成果物の報告時は `OUTPUT_ROOT` 配下のファイルをリポジトリ相対パスへ直す。
 4. 検証エラーに従ってHTMLを修正し、合格するまで再実行する。
-5. 外部URLが必要でも埋め込まず、必要な理由を前提欄へ記録する。
+5. 外部URLが必要でも埋め込まず、必要な理由を前提欄へ記録する。`style[data-pico-css]`が1件あり、固定バージョンとMITライセンス全文を保持していることも検証器で確認する。
 6. 検証が成功し、進捗表示を使っている場合は `structural-validation` を `pass`、`browser-validation` を `running` へ更新する。失敗した場合は同工程を `fail` にしてから修正し、再試行時に `running` へ戻す。
 
 ### Step 7: 変更レベルに応じてブラウザ検証する

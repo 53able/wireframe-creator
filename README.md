@@ -5,6 +5,7 @@
 ## 特徴
 
 - 外部依存のない単一HTMLを生成
+- Pico CSS v2.1.1をインライン化したセマンティックなHTML
 - 主要ユーザーフロー、状態、前提、未解決事項を明示
 - 構造検証用のPythonスクリプトを同梱
 - localhost限定のプレビューと作業中のホットリロードに対応
@@ -38,6 +39,12 @@ npx skills add 53able/wireframe-creator --list
 - 完全な視覚検証を行う場合は、レンダリング済みページを操作できるブラウザ自動化ツール
 
 Pythonスクリプトは標準ライブラリだけを使用します。
+
+## Pico CSS
+
+生成HTMLのスタイル基盤にはPico CSS v2.1.1を使用します。`assets/pico.min.css`へ固定版を同梱し、`scripts/render-wireframe-template.py`と進捗初期化処理がCSSをHTMLへインライン化します。CDNや実行時のネットワーク接続は使いません。
+
+単体で保存・配布されるHTMLごとにライセンス条件を満たすため、Pico CSSの著作権表示とMITライセンス全文も`style[data-pico-css]`へ埋め込みます。原文は`assets/pico.LICENSE.md`、取得元は[Pico CSS v2.1.1](https://github.com/picocss/pico/releases/tag/v2.1.1)です。
 
 ## 構成
 

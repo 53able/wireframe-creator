@@ -15,6 +15,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from pico_assets import ensure_pico_style
+
 
 START_MARKER = "<!-- WIREFRAME_PROGRESS_START -->"
 END_MARKER = "<!-- WIREFRAME_PROGRESS_END -->"
@@ -312,13 +314,14 @@ def command_init(args: argparse.Namespace) -> None:
     if args.mode not in VALID_MODES:
         raise ValueError(f"Unknown mode '{args.mode}'. Choose from: {', '.join(sorted(VALID_MODES))}")
     if path.exists():
-        source = read_text(path)
+        original = read_text(path)
+        source = ensure_pico_style(original)
         validate_html_document(source, path)
         if validate_markers(source):
             old_block = extract_block(source)
             state = parse_state(old_block, upgrade_legacy=args.upgrade)
             new_block = render_block(state)
-            if old_block != new_block:
+            if old_block != new_block or source != original:
                 output = BLOCK_RE.sub(lambda _: new_block, source, count=1)
                 atomic_write(path, output)
                 print(f"SUCCESS: Upgraded existing progress UI in {path} without resetting its workflow state.")
@@ -339,6 +342,7 @@ def command_init(args: argparse.Namespace) -> None:
             "{{PROGRESS_BLOCK}}",
             render_block(initial_state(args.mode, title)),
         )
+        output = ensure_pico_style(output)
         if re.search(r"\{\{[^{}]+\}\}", output):
             raise ValueError("Progress shell has unresolved placeholders.")
         validate_html_document(output, path)

@@ -235,6 +235,7 @@
     }
 
     function syncProgress(nextDocument) {
+      replaceStyle(nextDocument, 'style[data-pico-css]');
       replaceStyle(nextDocument, 'style[data-generation-progress-style]');
       const nextPanel = query('[data-generation-progress]', nextDocument);
       const currentPanel = query('[data-generation-progress]');
@@ -253,6 +254,7 @@
       const nextDocument = new DOMParser().parseFromString(text, 'text/html');
       const progressNodes = nextDocument.querySelectorAll('[data-generation-progress]');
       const rootNodes = nextDocument.querySelectorAll('[data-wireframe-root]');
+      const picoStyleNodes = nextDocument.querySelectorAll('style[data-pico-css]');
       const styleNodes = nextDocument.querySelectorAll('style[data-wireframe-style]');
       const runtimeNodes = nextDocument.querySelectorAll('script[data-wireframe-runtime]');
       const progressStateNodes = nextDocument.querySelectorAll('[data-generation-progress-state]');
@@ -262,6 +264,7 @@
       if (progressNodes.length > 1 || rootNodes.length > 1 || currentRoots.length > 1) {
         throw new Error('更新境界が重複しています');
       }
+      if (picoStyleNodes.length !== 1) throw new Error('data-pico-cssは1件必要です');
       const nextProgress = progressNodes[0] || null;
       const nextRoot = rootNodes[0] || null;
       const currentRoot = currentRoots[0] || null;
@@ -318,7 +321,6 @@
         handoff.dataset.staticHtmlHandoff = '';
         handoff.dataset.staticHtmlUrl = staticHtmlUrl;
         handoff.dataset.staticHtmlName = staticHtmlName;
-        handoff.style.cssText = 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;padding:.85rem 1rem;border-bottom:2px solid #202124;color:#202124;background:#f3f4f5;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
         const message = document.createElement('strong');
         message.textContent = '作業が完了しました。サーバー停止前に静的HTMLを保存できます。';
         const link = document.createElement('a');
@@ -326,7 +328,8 @@
         link.href = `/__wireframe/static?filename=${encodeURIComponent(staticHtmlName)}`;
         link.download = staticHtmlName;
         link.textContent = '静的HTMLを保存';
-        link.style.cssText = 'display:inline-flex;min-height:32px;align-items:center;padding:.25rem .65rem;border:1px solid #202124;color:#202124;background:#fff;font-size:.78rem;font-weight:700;text-decoration:underline;text-underline-offset:.16em;white-space:nowrap';
+        link.className = 'secondary outline';
+        link.setAttribute('role', 'button');
         handoff.append(message, link);
         panel.replaceWith(handoff);
       } else {
@@ -351,6 +354,7 @@
       let previousRoot = null;
       let insertedRoot = null;
       let previousStyle = null;
+      let previousPicoStyle = null;
       let previousTitle = document.title;
       let previousRuntimeNode = null;
       let rollbackSnapshot = null;
@@ -369,9 +373,11 @@
         if (preparedRoot && preserve) applySnapshotToRoot(preparedRoot, snapshot);
 
         previousRoot = query('[data-wireframe-root]');
+        previousPicoStyle = query('style[data-pico-css]')?.textContent ?? null;
         previousStyle = query('style[data-wireframe-style]')?.textContent ?? null;
         previousRuntimeNode = query('script[data-wireframe-runtime]');
         document.title = nextDocument.title;
+        replaceStyle(nextDocument, 'style[data-pico-css]');
         replaceStyle(nextDocument, 'style[data-wireframe-style]');
         if (preparedRoot && previousRoot) {
           previousRoot.replaceWith(preparedRoot);
@@ -395,6 +401,9 @@
         const liveStyle = query('style[data-wireframe-style]');
         if (previousStyle !== null && liveStyle) liveStyle.textContent = previousStyle;
         else if (previousStyle === null) liveStyle?.remove();
+        const livePicoStyle = query('style[data-pico-css]');
+        if (previousPicoStyle !== null && livePicoStyle) livePicoStyle.textContent = previousPicoStyle;
+        else if (previousPicoStyle === null) livePicoStyle?.remove();
         const liveRuntime = query('script[data-wireframe-runtime]');
         if (previousRuntimeNode && liveRuntime !== previousRuntimeNode) {
           liveRuntime?.remove();
