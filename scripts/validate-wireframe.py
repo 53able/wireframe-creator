@@ -11,6 +11,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
+from pico_assets import PICO_VERSION, validate_pico_style
+
 
 PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}")
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -33,6 +35,7 @@ class WireframeParser(HTMLParser):
         self.inline_script_count = 0
         self.external_script_count = 0
         self.stylesheet_links = 0
+        self.pico_version: str | None = None
         self.assumptions_blocks = 0
         self.open_question_blocks = 0
         self.current_screen: str | None = None
@@ -64,6 +67,8 @@ class WireframeParser(HTMLParser):
                 self.inline_script_count += 1
         if tag == "link" and "stylesheet" in values.get("rel", "").lower():
             self.stylesheet_links += 1
+        if tag == "style" and "data-pico-css" in values:
+            self.pico_version = values.get("data-pico-version") or None
 
         for attr in ("src", "href"):
             value = values.get(attr, "").strip()
@@ -213,6 +218,10 @@ def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationR
         result.errors.append("External <script src> dependencies are not allowed.")
     if parser.stylesheet_links:
         result.errors.append("External or linked stylesheets are not allowed; inline CSS instead.")
+    try:
+        validate_pico_style(source)
+    except ValueError as exc:
+        result.errors.append(str(exc))
     if parser.assumptions_blocks == 0:
         result.errors.append("Missing an element with data-assumptions.")
     if parser.open_question_blocks == 0:
@@ -229,6 +238,7 @@ def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationR
         "actionCount": len(parser.action_targets),
         "navigationCount": len(parser.nav_targets),
         "inlineScripts": parser.inline_script_count,
+        "picoVersion": parser.pico_version,
     }
     return result
 

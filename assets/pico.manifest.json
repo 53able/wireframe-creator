@@ -1,0 +1,12 @@
+{
+  "version": "2.1.1",
+  "source": "https://github.com/picocss/pico/releases/tag/v2.1.1",
+  "css": {
+    "path": "pico.min.css",
+    "sha256": "fbc9a63fc9fc9f72d12fd7fc9806e11fa9f77ae4f9cad146b27003a1119ba3db"
+  },
+  "license": {
+    "path": "pico.LICENSE.md",
+    "sha256": "afaff063e044233f917b7807dccab022f09dca474f92b642846bee4850655bbf"
+  }
+}

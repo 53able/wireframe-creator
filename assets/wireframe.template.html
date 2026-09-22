@@ -1,77 +1,87 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
   <title>{{TITLE}} — Wireframe</title>
+  {{PICO_STYLE}}
   <style data-wireframe-style>
-    :root {
+    :root[data-theme="light"] {
       color-scheme: light;
-      --ink: #1f2328;
-      --muted: #656d76;
-      --line: #8c959f;
-      --soft-line: #d0d7de;
-      --paper: #ffffff;
-      --wash: #f6f8fa;
-      --focus: #0969da;
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --pico-background-color: #f6f8fa;
+      --pico-color: #1f2328;
+      --pico-muted-color: #656d76;
+      --pico-muted-border-color: #d0d7de;
+      --pico-primary: #1f2328;
+      --pico-primary-background: #1f2328;
+      --pico-primary-border: #1f2328;
+      --pico-primary-hover: #ffffff;
+      --pico-primary-hover-background: #343a40;
+      --pico-primary-hover-border: #343a40;
+      --pico-primary-focus: rgba(31, 35, 40, .3);
+      --pico-secondary: #343a40;
+      --pico-secondary-background: #ffffff;
+      --pico-secondary-border: #656d76;
+      --pico-secondary-hover-background: #f6f8fa;
+      --pico-secondary-hover-border: #1f2328;
+      --pico-border-radius: .35rem;
+      --wireframe-ink: #1f2328;
+      --wireframe-line: #8c959f;
+      --wireframe-paper: #ffffff;
+      --wireframe-wash: #f6f8fa;
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; color: var(--ink); background: var(--wash); }
-    button, input, select, textarea { font: inherit; }
-    button, .button {
-      min-height: 44px; padding: .65rem 1rem; border: 2px solid var(--ink);
-      border-radius: .35rem; color: var(--ink); background: var(--paper); cursor: pointer;
-    }
-    button.primary { color: var(--paper); background: var(--ink); }
-    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-      outline: 3px solid var(--focus); outline-offset: 3px;
-    }
-    .app-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
-    .topbar {
+    [data-wireframe-root] :is(button, [role="button"], input, select, textarea) { min-height: 44px; }
+    [data-wireframe-root].app-shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    [data-wireframe-root] .topbar {
       display: flex; gap: 1rem; align-items: center; justify-content: space-between;
-      padding: 1rem clamp(1rem, 3vw, 2rem); border-bottom: 2px solid var(--ink); background: var(--paper);
+      padding: 1rem clamp(1rem, 3vw, 2rem); border-bottom: 2px solid var(--wireframe-ink); background: var(--wireframe-paper);
     }
-    .topbar h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 1.5rem); }
-    .status { padding: .25rem .55rem; border: 1px solid var(--line); border-radius: 999px; font-size: .8rem; }
-    .workspace { display: grid; grid-template-columns: minmax(16rem, 23rem) minmax(0, 1fr); min-height: 0; }
-    .sidebar { padding: 1rem; border-right: 1px solid var(--soft-line); background: var(--paper); overflow: auto; }
-    .sidebar h2 { margin: 1.5rem 0 .5rem; font-size: 1rem; }
-    .sidebar h2:first-child { margin-top: 0; }
-    .sidebar dl, .sidebar ul { margin: 0; padding: 0; }
-    .sidebar dt { margin-top: .75rem; font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; }
-    .sidebar dd { margin: .2rem 0 0; }
-    .sidebar li { margin: .35rem 0 0 1.1rem; }
-    .screen-nav { display: grid; gap: .5rem; }
-    .screen-nav button { width: 100%; text-align: left; border-color: var(--soft-line); }
-    .screen-nav button[aria-current="page"] { border-color: var(--ink); background: var(--wash); font-weight: 700; }
-    [data-review-focus] { margin-top: 1.5rem; padding: .85rem; border: 2px solid var(--ink); background: var(--wash); }
-    [data-review-focus] h2 { margin-top: 0; }
-    .canvas { padding: clamp(1rem, 3vw, 2rem); overflow: auto; }
-    .device {
-      width: min(100%, 72rem); min-height: 38rem; margin: 0 auto; border: 3px solid var(--ink);
-      border-radius: .7rem; background: var(--paper); box-shadow: .5rem .5rem 0 #d8dee4;
+    [data-wireframe-root] .topbar h1 { margin: 0; font-size: clamp(1.1rem, 3vw, 1.5rem); }
+    [data-wireframe-root] .status { padding: .25rem .55rem; border: 1px solid var(--wireframe-line); border-radius: 999px; font-size: .8rem; }
+    [data-wireframe-root] .workspace { display: grid; grid-template-columns: minmax(16rem, 23rem) minmax(0, 1fr); min-height: 0; }
+    [data-wireframe-root] .sidebar { padding: 1rem; border-right: 1px solid var(--pico-muted-border-color); background: var(--wireframe-paper); overflow: auto; }
+    [data-wireframe-root] .sidebar h2 { margin: 1.5rem 0 .5rem; font-size: 1rem; }
+    [data-wireframe-root] .sidebar h2:first-child { margin-top: 0; }
+    [data-wireframe-root] .sidebar :is(dl, ul) { margin: 0; padding: 0; }
+    [data-wireframe-root] .sidebar dt { margin-top: .75rem; font-size: .75rem; font-weight: 700; color: var(--pico-muted-color); text-transform: uppercase; }
+    [data-wireframe-root] .sidebar dd { margin: .2rem 0 0; }
+    [data-wireframe-root] .sidebar li { margin: .35rem 0 0 1.1rem; }
+    [data-wireframe-root] .screen-nav { display: grid; gap: .5rem; }
+    [data-wireframe-root] .screen-nav button { width: 100%; margin: 0; text-align: left; }
+    [data-wireframe-root] .screen-nav button[aria-current="page"] { border-color: var(--wireframe-ink); background: var(--wireframe-wash); color: var(--wireframe-ink); font-weight: 700; }
+    [data-wireframe-root] [data-review-focus] { margin-top: 1.5rem; padding: .85rem; border: 2px solid var(--wireframe-ink); background: var(--wireframe-wash); }
+    [data-wireframe-root] [data-review-focus] h2 { margin-top: 0; }
+    [data-wireframe-root] .canvas { padding: clamp(1rem, 3vw, 2rem); overflow: auto; }
+    [data-wireframe-root] .device {
+      width: min(100%, 72rem); min-height: 38rem; margin: 0 auto; border: 3px solid var(--wireframe-ink);
+      border-radius: .7rem; background: var(--wireframe-paper); box-shadow: .5rem .5rem 0 #d8dee4;
     }
-    .device-bar { display: flex; gap: .4rem; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
-    .device-bar span { width: .7rem; height: .7rem; border: 1px solid var(--line); border-radius: 50%; }
-    .screen { display: none; padding: clamp(1rem, 4vw, 3rem); }
-    .screen.is-active { display: block; }
-    .eyebrow { margin: 0 0 .5rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
-    .screen h2 { margin: 0 0 .75rem; font-size: clamp(1.5rem, 4vw, 2.4rem); }
-    .lede { max-width: 60ch; color: var(--muted); }
-    .wire-box { margin: 1.25rem 0; padding: 1rem; border: 2px dashed var(--line); background: var(--wash); }
-    .form-grid { display: grid; gap: 1rem; max-width: 38rem; }
-    label { display: grid; gap: .35rem; font-weight: 650; }
-    input, select, textarea { width: 100%; min-height: 44px; padding: .65rem; border: 1px solid var(--line); background: var(--paper); }
-    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
-    .annotation { margin-top: 2rem; padding: 1rem; border-left: .35rem solid var(--ink); background: var(--wash); }
-    .annotation h3 { margin-top: 0; font-size: 1rem; }
-    .hidden { display: none !important; }
+    [data-wireframe-root] .device-bar { display: flex; gap: .4rem; padding: .6rem .8rem; border-bottom: 1px solid var(--wireframe-line); }
+    [data-wireframe-root] .device-bar span { width: .7rem; height: .7rem; border: 1px solid var(--wireframe-line); border-radius: 50%; }
+    [data-wireframe-root] .screen { display: none; padding: clamp(1rem, 4vw, 3rem); }
+    [data-wireframe-root] .screen.is-active { display: block; }
+    [data-wireframe-root] .eyebrow { margin: 0 0 .5rem; color: var(--pico-muted-color); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+    [data-wireframe-root] .screen h2 { margin: 0 0 .75rem; font-size: clamp(1.5rem, 4vw, 2.4rem); }
+    [data-wireframe-root] .lede { max-width: 60ch; color: var(--pico-muted-color); }
+    [data-wireframe-root] .wire-box { margin: 1.25rem 0; padding: 1rem; border: 2px dashed var(--wireframe-line); background: var(--wireframe-wash); }
+    [data-wireframe-root] .form-grid { display: grid; gap: 1rem; max-width: 38rem; }
+    [data-wireframe-root] .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.5rem; }
+    [data-wireframe-root] .actions button { width: auto; margin: 0; }
+    [data-wireframe-root] .annotation { margin-top: 2rem; padding: 1rem; border-left: .35rem solid var(--wireframe-ink); background: var(--wireframe-wash); }
+    [data-wireframe-root] .annotation h3 { margin-top: 0; font-size: 1rem; }
+    [data-wireframe-root] .hidden { display: none !important; }
+    [data-static-html-handoff] {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+      gap: .75rem; padding: .85rem 1rem; border-bottom: 2px solid var(--wireframe-ink);
+      background: var(--wireframe-wash);
+    }
+    [data-static-html-link] { margin: 0; white-space: nowrap; }
     @media (max-width: 760px) {
-      .workspace { grid-template-columns: 1fr; }
-      .sidebar { border-right: 0; border-bottom: 1px solid var(--soft-line); }
-      .canvas { padding: 1rem; }
-      .device { min-height: 30rem; border-width: 2px; box-shadow: .25rem .25rem 0 #d8dee4; }
+      [data-wireframe-root] .workspace { grid-template-columns: 1fr; }
+      [data-wireframe-root] .sidebar { border-right: 0; border-bottom: 1px solid var(--pico-muted-border-color); }
+      [data-wireframe-root] .canvas { padding: 1rem; }
+      [data-wireframe-root] .device { min-height: 30rem; border-width: 2px; box-shadow: .25rem .25rem 0 #d8dee4; }
     }
   </style>
 </head>
@@ -106,8 +116,8 @@
 
         <h2>画面</h2>
         <nav class="screen-nav" aria-label="画面一覧">
-          <button type="button" data-nav-target="start" aria-current="page">1. {{START_SCREEN_NAME}}</button>
-          <button type="button" data-nav-target="result">2. {{RESULT_SCREEN_NAME}}</button>
+          <button type="button" class="secondary outline" data-nav-target="start" aria-current="page">1. {{START_SCREEN_NAME}}</button>
+          <button type="button" class="secondary outline" data-nav-target="result">2. {{RESULT_SCREEN_NAME}}</button>
           <!-- 必要な画面だけ同じ形式で追加する -->
         </nav>
 
@@ -135,7 +145,7 @@
             <p class="lede">{{START_SCREEN_PURPOSE}}</p>
             <div class="wire-box">{{START_SCREEN_CONTENT}}</div>
             <div class="actions">
-              <button type="button" class="primary" data-action-target="result">{{PRIMARY_ACTION_LABEL}}</button>
+              <button type="button" data-action-target="result">{{PRIMARY_ACTION_LABEL}}</button>
             </div>
             <aside class="annotation">
               <h3>検証ポイント</h3>
@@ -149,7 +159,7 @@
             <p class="lede">{{RESULT_SCREEN_PURPOSE}}</p>
             <div class="wire-box">{{RESULT_SCREEN_CONTENT}}</div>
             <div class="actions">
-              <button type="button" data-action-target="start">最初に戻る</button>
+              <button type="button" class="secondary outline" data-action-target="start">最初に戻る</button>
             </div>
             <aside class="annotation">
               <h3>判断基準</h3>
