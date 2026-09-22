@@ -2,6 +2,16 @@
 
 このプロジェクトの主な変更を記録します。
 
+## 3.0.1 - 2026-09-22
+
+### 修正
+
+- keep browser progress labels in sync
+
+### 変更
+
+- Merge pull request #2 from 53able/fix/progress-state-label-parity
+
 ## 3.0.0 - 2026-09-21
 
 ### 新機能
