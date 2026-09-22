@@ -11,7 +11,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pico_assets import PICO_VERSION
+from pico_assets import PICO_VERSION, validate_pico_style
 
 
 PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}")
@@ -35,10 +35,7 @@ class WireframeParser(HTMLParser):
         self.inline_script_count = 0
         self.external_script_count = 0
         self.stylesheet_links = 0
-        self.pico_style_count = 0
         self.pico_version: str | None = None
-        self.in_pico_style = False
-        self.pico_style_parts: list[str] = []
         self.assumptions_blocks = 0
         self.open_question_blocks = 0
         self.current_screen: str | None = None
@@ -71,9 +68,7 @@ class WireframeParser(HTMLParser):
         if tag == "link" and "stylesheet" in values.get("rel", "").lower():
             self.stylesheet_links += 1
         if tag == "style" and "data-pico-css" in values:
-            self.pico_style_count += 1
             self.pico_version = values.get("data-pico-version") or None
-            self.in_pico_style = True
 
         for attr in ("src", "href"):
             value = values.get(attr, "").strip()
@@ -112,16 +107,12 @@ class WireframeParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self.in_title = False
-        if tag == "style" and self.in_pico_style:
-            self.in_pico_style = False
         if tag not in VOID_TAGS and self._screen_stack:
             self.current_screen = self._screen_stack.pop()
 
     def handle_data(self, data: str) -> None:
         if self.in_title:
             self.title_parts.append(data)
-        if self.in_pico_style:
-            self.pico_style_parts.append(data)
 
 
 class ValidationResult:
@@ -227,19 +218,10 @@ def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationR
         result.errors.append("External <script src> dependencies are not allowed.")
     if parser.stylesheet_links:
         result.errors.append("External or linked stylesheets are not allowed; inline CSS instead.")
-    if parser.pico_style_count != 1:
-        result.errors.append(
-            f"Expected exactly one inline Pico CSS style; found {parser.pico_style_count}."
-        )
-    elif parser.pico_version != PICO_VERSION:
-        result.errors.append(
-            f"Expected Pico CSS version {PICO_VERSION}; found {parser.pico_version or 'none'}."
-        )
-    pico_style = "".join(parser.pico_style_parts)
-    required_notice_parts = ("MIT License", "Copyright (c) 2019-2024 Pico", "Permission is hereby granted")
-    missing_notice_parts = [part for part in required_notice_parts if part not in pico_style]
-    if parser.pico_style_count == 1 and missing_notice_parts:
-        result.errors.append("Inline Pico CSS is missing the complete MIT license notice.")
+    try:
+        validate_pico_style(source)
+    except ValueError as exc:
+        result.errors.append(str(exc))
     if parser.assumptions_blocks == 0:
         result.errors.append("Missing an element with data-assumptions.")
     if parser.open_question_blocks == 0:

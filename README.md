@@ -42,9 +42,11 @@ Pythonスクリプトは標準ライブラリだけを使用します。
 
 ## Pico CSS
 
-生成HTMLのスタイル基盤にはPico CSS v2.1.1を使用します。`assets/pico.min.css`へ固定版を同梱し、`scripts/render-wireframe-template.py`と進捗初期化処理がCSSをHTMLへインライン化します。CDNや実行時のネットワーク接続は使いません。
+生成HTMLのスタイル基盤にはPico CSS v2.1.1を使用します。`assets/pico.manifest.json`でバージョン、取得元、CSSとライセンスのSHA-256を固定し、`scripts/render-wireframe-template.py`と進捗初期化処理が検証済みCSSをHTMLへインライン化します。CDNや実行時のネットワーク接続は使いません。
 
 単体で保存・配布されるHTMLごとにライセンス条件を満たすため、Pico CSSの著作権表示とMITライセンス全文も`style[data-pico-css]`へ埋め込みます。原文は`assets/pico.LICENSE.md`、取得元は[Pico CSS v2.1.1](https://github.com/picocss/pico/releases/tag/v2.1.1)です。
+
+固定版の更新と既存HTMLの明示的な移行手順は[`references/pico-css.md`](references/pico-css.md)に記載しています。
 
 ## 構成
 

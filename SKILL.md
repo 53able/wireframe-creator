@@ -119,6 +119,7 @@ python3 "$SKILL_ROOT/scripts/render-wireframe-template.py" \
 3. 正本ファイル名のタイムスタンプを作業開始時や中間反復時に予約しない。
 4. テンプレートのプレースホルダーを実際の情報へ置き換え、不要な任意領域を要素ごと削除する。
 5. すべてのCSSとJavaScriptをHTML内に記述する。フォーム、ボタン、タイポグラフィ、基本レイアウトにはPico CSSを優先し、`style[data-wireframe-style]`の追加CSSは画面切替、キャンバス、注釈、低忠実度表現などワイヤーフレーム固有の用途に限定する。
+   Pico CSSの固定版を更新する場合、または旧版を含む既存HTMLを移行する場合は`references/pico-css.md`に従う。
 6. ワイヤーフレーム名とステータス、検証ブリーフ、画面一覧またはフロー、操作可能な画面領域、前提、未解決事項、操作説明を含める。
 7. 判断事項がある場合だけ `data-review-focus` と `data-decision-id="D-xx"` を使い、今回決める事項を短く表示する。
 8. `<button>`、`<nav>`、`<main>`、見出し、ラベルなどの意味的HTMLを優先する。

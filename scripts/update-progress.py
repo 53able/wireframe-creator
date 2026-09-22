@@ -15,7 +15,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from pico_assets import ensure_pico_style
+from pico_assets import (
+    PICO_VERSION,
+    ensure_pico_style,
+    render_pico_style_content,
+    validate_pico_style,
+)
 
 
 START_MARKER = "<!-- WIREFRAME_PROGRESS_START -->"
@@ -244,8 +249,8 @@ def overall_status(state: dict[str, object]) -> str:
     return "running"
 
 
-def json_for_script(state: dict[str, object]) -> str:
-    return json.dumps(state, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
+def json_for_script(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c")
 
 
 def render_block(
@@ -255,6 +260,11 @@ def render_block(
     client_path = skill_root() / "assets" / "hot-reload-client.fragment.html"
     template = read_text(template_path)
     hot_reload_client = read_text(client_path).rstrip()
+    hot_reload_client = hot_reload_client.replace(
+        "{{PICO_VERSION_JSON}}", json_for_script(PICO_VERSION)
+    ).replace(
+        "{{PICO_STYLE_CONTENT_JSON}}", json_for_script("\n" + render_pico_style_content() + "\n")
+    )
     items = []
     for item in state["steps"]:
         items.append(
@@ -315,7 +325,7 @@ def command_init(args: argparse.Namespace) -> None:
         raise ValueError(f"Unknown mode '{args.mode}'. Choose from: {', '.join(sorted(VALID_MODES))}")
     if path.exists():
         original = read_text(path)
-        source = ensure_pico_style(original)
+        source = ensure_pico_style(original, upgrade=args.upgrade_pico)
         validate_html_document(source, path)
         if validate_markers(source):
             old_block = extract_block(source)
@@ -436,6 +446,7 @@ def command_prepare(args: argparse.Namespace) -> None:
     source = read_text(source_path)
     clean = strip_block(source)
     validate_html_document(clean, source_path)
+    validate_pico_style(clean)
     atomic_write(destination, clean)
     print(f"SUCCESS: Wrote a progress-free working copy to {destination}.")
 
@@ -450,6 +461,7 @@ def command_stage(args: argparse.Namespace) -> None:
     parse_state(block)
     candidate = read_text(source_path)
     validate_html_document(candidate, source_path)
+    validate_pico_style(candidate)
     if START_MARKER in candidate or END_MARKER in candidate or "data-generation-progress" in candidate:
         raise ValueError("The staged source must not contain a progress block or progress attributes.")
     output = inject_after_body(candidate, block, source_path)
@@ -486,6 +498,7 @@ def command_finalize(args: argparse.Namespace) -> None:
         raise ValueError("Final --output filename does not match the name prepared by set-output.")
     clean = strip_block(source)
     validate_html_document(clean, path)
+    validate_pico_style(clean)
     atomic_create(output_path, clean)
     try:
         atomic_write(path, clean)
@@ -500,6 +513,7 @@ def command_verify_final(args: argparse.Namespace) -> None:
     path: Path = args.html
     source = read_text(path)
     validate_html_document(source, path)
+    validate_pico_style(source)
     forbidden = [
         START_MARKER,
         END_MARKER,
@@ -545,6 +559,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--upgrade",
         action="store_true",
         help="Explicitly migrate an existing version 1 progress block to version 2",
+    )
+    init_parser.add_argument(
+        "--upgrade-pico",
+        action="store_true",
+        help="Explicitly replace an existing Pico CSS block with the pinned manifest version",
     )
     init_parser.set_defaults(handler=command_init)
 

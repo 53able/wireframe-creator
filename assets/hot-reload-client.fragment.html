@@ -8,6 +8,8 @@
     let stopped = false;
     let updating = false;
     let queuedOptions = null;
+    const expectedPicoVersion = {{PICO_VERSION_JSON}};
+    const expectedPicoStyleContent = {{PICO_STYLE_CONTENT_JSON}};
 
     const query = (selector, root = document) => root.querySelector(selector);
 
@@ -202,12 +204,19 @@
       try { restoreScroll(query('.canvas'), snapshot.canvasScroll); } catch (_) {}
     }
 
-    function replaceStyle(nextDocument, selector) {
+    function replaceStyleNode(nextDocument, selector) {
       const next = query(selector, nextDocument);
       const current = query(selector);
       if (!next) current?.remove();
-      else if (current) current.textContent = next.textContent;
+      else if (current) current.replaceWith(document.importNode(next, true));
       else document.head.append(document.importNode(next, true));
+    }
+
+    function restoreStyleNode(previous, selector) {
+      const current = query(selector);
+      if (!previous) current?.remove();
+      else if (current) current.replaceWith(previous.cloneNode(true));
+      else document.head.append(previous.cloneNode(true));
     }
 
     function prepareRuntime(nextDocument) {
@@ -235,8 +244,7 @@
     }
 
     function syncProgress(nextDocument) {
-      replaceStyle(nextDocument, 'style[data-pico-css]');
-      replaceStyle(nextDocument, 'style[data-generation-progress-style]');
+      replaceStyleNode(nextDocument, 'style[data-generation-progress-style]');
       const nextPanel = query('[data-generation-progress]', nextDocument);
       const currentPanel = query('[data-generation-progress]');
       if (nextPanel && currentPanel) currentPanel.replaceWith(document.importNode(nextPanel, true));
@@ -265,6 +273,11 @@
         throw new Error('更新境界が重複しています');
       }
       if (picoStyleNodes.length !== 1) throw new Error('data-pico-cssは1件必要です');
+      const picoStyle = picoStyleNodes[0];
+      if (picoStyle.dataset.picoVersion !== expectedPicoVersion
+        || picoStyle.textContent !== expectedPicoStyleContent) {
+        throw new Error(`Pico CSSは固定版v${expectedPicoVersion}の完全な内容が必要です`);
+      }
       const nextProgress = progressNodes[0] || null;
       const nextRoot = rootNodes[0] || null;
       const currentRoot = currentRoots[0] || null;
@@ -351,12 +364,12 @@
         return;
       }
       updating = true;
-      let previousRoot = null;
+      const previousRoot = query('[data-wireframe-root]');
       let insertedRoot = null;
-      let previousStyle = null;
-      let previousPicoStyle = null;
-      let previousTitle = document.title;
-      let previousRuntimeNode = null;
+      const previousStyle = query('style[data-wireframe-style]')?.cloneNode(true) ?? null;
+      const previousPicoStyle = query('style[data-pico-css]')?.cloneNode(true) ?? null;
+      const previousTitle = document.title;
+      const previousRuntimeNode = query('script[data-wireframe-runtime]');
       let rollbackSnapshot = null;
       try {
         const response = await fetch('/__wireframe/document', { cache: 'no-store' });
@@ -372,13 +385,9 @@
         const preparedRoot = nextRoot ? document.importNode(nextRoot, true) : null;
         if (preparedRoot && preserve) applySnapshotToRoot(preparedRoot, snapshot);
 
-        previousRoot = query('[data-wireframe-root]');
-        previousPicoStyle = query('style[data-pico-css]')?.textContent ?? null;
-        previousStyle = query('style[data-wireframe-style]')?.textContent ?? null;
-        previousRuntimeNode = query('script[data-wireframe-runtime]');
         document.title = nextDocument.title;
-        replaceStyle(nextDocument, 'style[data-pico-css]');
-        replaceStyle(nextDocument, 'style[data-wireframe-style]');
+        replaceStyleNode(nextDocument, 'style[data-pico-css]');
+        replaceStyleNode(nextDocument, 'style[data-wireframe-style]');
         if (preparedRoot && previousRoot) {
           previousRoot.replaceWith(preparedRoot);
           insertedRoot = preparedRoot;
@@ -398,12 +407,8 @@
       } catch (error) {
         if (insertedRoot && previousRoot && insertedRoot.isConnected) insertedRoot.replaceWith(previousRoot);
         else if (insertedRoot && !previousRoot) insertedRoot.remove();
-        const liveStyle = query('style[data-wireframe-style]');
-        if (previousStyle !== null && liveStyle) liveStyle.textContent = previousStyle;
-        else if (previousStyle === null) liveStyle?.remove();
-        const livePicoStyle = query('style[data-pico-css]');
-        if (previousPicoStyle !== null && livePicoStyle) livePicoStyle.textContent = previousPicoStyle;
-        else if (previousPicoStyle === null) livePicoStyle?.remove();
+        restoreStyleNode(previousStyle, 'style[data-wireframe-style]');
+        restoreStyleNode(previousPicoStyle, 'style[data-pico-css]');
         const liveRuntime = query('script[data-wireframe-runtime]');
         if (previousRuntimeNode && liveRuntime !== previousRuntimeNode) {
           liveRuntime?.remove();

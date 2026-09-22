@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -36,6 +38,13 @@ class PicoCssTests(unittest.TestCase):
             self.assertIn("Permission is hereby granted", source)
             self.assertNotIn("{{PICO_STYLE}}", source)
             self.assertNotIn('<link rel="stylesheet"', source)
+
+    def test_manifest_checksums_match_vendored_assets(self) -> None:
+        manifest = json.loads((ROOT / "assets" / "pico.manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["version"], "2.1.1")
+        for kind in ("css", "license"):
+            asset = ROOT / "assets" / manifest[kind]["path"]
+            self.assertEqual(hashlib.sha256(asset.read_bytes()).hexdigest(), manifest[kind]["sha256"])
 
     def test_rendered_template_passes_structural_validation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -96,6 +105,20 @@ class PicoCssTests(unittest.TestCase):
                     if line.startswith("CANONICAL_HTML=")
                 )
             )
+            staged = preview.read_text(encoding="utf-8")
+            preview.write_text(
+                staged.replace('data-pico-version="2.1.1"', 'data-pico-version="9.9.9"', 1),
+                encoding="utf-8",
+            )
+            rejected = subprocess.run(
+                [sys.executable, str(UPDATE), "finalize", str(preview), "--output", str(canonical)],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(rejected.returncode, 1)
+            self.assertIn("does not match the pinned", rejected.stderr)
+            preview.write_text(staged, encoding="utf-8")
             self.run_script(UPDATE, "finalize", preview, "--output", canonical)
             finalized = canonical.read_text(encoding="utf-8")
             self.assertEqual(finalized.count("<style data-pico-css"), 1)
@@ -120,7 +143,51 @@ class PicoCssTests(unittest.TestCase):
                 capture_output=True,
             )
             self.assertEqual(result.returncode, 1)
-            self.assertIn("Expected exactly one inline Pico CSS style", result.stderr)
+            self.assertIn("exactly one complete data-pico-css style element", result.stderr)
+
+    def test_validator_rejects_truncated_license(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "wireframe.html"
+            self.run_script(RENDER, "--output", output)
+            source = re.sub(r"\{\{[^{}]+\}\}", "Sample", output.read_text(encoding="utf-8"))
+            source = source.replace(
+                ' * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n',
+                "",
+                1,
+            )
+            output.write_text(source, encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(VALIDATE), str(output)],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("does not match the pinned", result.stderr)
+
+    def test_existing_pico_requires_explicit_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "wireframe.html"
+            self.run_script(RENDER, "--output", output)
+            source = output.read_text(encoding="utf-8").replace(
+                'data-pico-version="2.1.1"', 'data-pico-version="2.0.0"', 1
+            )
+            output.write_text(source, encoding="utf-8")
+            rejected = subprocess.run(
+                [sys.executable, str(UPDATE), "init", str(output), "--mode", "new"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(rejected.returncode, 1)
+            self.assertIn("--upgrade-pico", rejected.stderr)
+
+            self.run_script(
+                UPDATE, "init", output, "--mode", "new", "--upgrade-pico"
+            )
+            upgraded = output.read_text(encoding="utf-8")
+            self.assertIn('data-pico-version="2.1.1"', upgraded)
+            self.assertNotIn('data-pico-version="2.0.0"', upgraded)
 
 
 if __name__ == "__main__":

@@ -118,7 +118,7 @@ python3 "$SKILL_ROOT/scripts/update-progress.py" stage \
 - 失敗、再試行、接続断を含む壁時計時間とし、一時停止しない。
 - 毎秒の更新をスクリーンリーダーへ通知しない。ライブリージョンは進捗メッセージだけに使う。
 
-ホットリロードでは、タイトル、`style[data-pico-css]`、`style[data-wireframe-style]`、`[data-wireframe-root]`、`script[data-wireframe-runtime]` の5境界だけを同期する。Pico CSSは固定バージョンとMITライセンス全文を含む要素単位で同期する。
+ホットリロードでは、タイトル、`style[data-pico-css]`、`style[data-wireframe-style]`、`[data-wireframe-root]`、`script[data-wireframe-runtime]` の5境界だけを同期する。Pico CSSはマニフェスト固定版とMITライセンス全文が完全一致することをDOM変更前に検証し、属性を含む要素単位で同期する。失敗時もstyle要素全体をスナップショットから復元する。
 
 同じ画面ID、入力識別子、フォーカス対象が残る場合は状態を復元する。同名要素が同じ画面またはフォーム内に複数ある場合は、一意の `id` または `data-preview-key` を付ける。ファイル入力の選択内容はブラウザの制約により復元しない。
 
