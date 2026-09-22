@@ -2,6 +2,20 @@
 
 このプロジェクトの主な変更を記録します。
 
+## 3.1.0 - 2026-09-22
+
+### 新機能
+
+- adopt Pico CSS for HTML output
+
+### 修正
+
+- enforce Pico CSS dependency contract
+
+### 変更
+
+- Merge pull request #4 from 53able/t3code/migrate-html-to-pico-css
+
 ## Unreleased
 
 ### 変更
