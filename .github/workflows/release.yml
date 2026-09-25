@@ -97,7 +97,7 @@ jobs:
           git tag -a "${TAG}" -m "${TAG}"
           git push --atomic origin HEAD:main "${TAG}"
 
-      - name: Create GitHub release with skill ZIP
+      - name: Create draft GitHub release with skill ZIP
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.prepare.outputs.version }}
@@ -107,6 +107,7 @@ jobs:
             "dist/wireframe-creator-v${VERSION}.zip" \
             --title "wireframe-creator ${TAG}" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --draft \
             --verify-tag
 
   build-mac-app:
@@ -136,3 +137,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ needs.release.outputs.tag }}" dist/Agent-Workspace-*.dmg --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.release.outputs.tag }}" --draft=false
