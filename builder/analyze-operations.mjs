@@ -36,6 +36,14 @@ function findRef(indexed, ref) {
     || (indexed.id === ref ? indexed : undefined);
 }
 
+// navigate / save のtriggerRefはscreen.actionsからのみ解決する。
+// screen.blocksを対象に含めると、targetプロパティを持つ任意のblock
+// （paragraph/panel/list等）が誤って遷移トリガーとして成立してしまう。
+function findActionRef(indexed, ref) {
+  if (!nonEmpty(ref)) return undefined;
+  return indexed.actions.find((action) => action.ref === ref);
+}
+
 function analyzeOperations(input, sourceText = JSON.stringify(input)) {
   if (!input || typeof input !== "object" || !Array.isArray(input.screens)) {
     fail("screens must be an array");
@@ -71,7 +79,9 @@ function analyzeOperations(input, sourceText = JSON.stringify(input)) {
       if (operation.targetRef !== undefined && !nonEmpty(operation.targetRef)) fail(`${label}.targetRef must be a non-empty string`);
       if (operation.expectedResult !== undefined && !nonEmpty(operation.expectedResult)) fail(`${label}.expectedResult must be a non-empty string`);
 
-      const trigger = findRef(screen, operation.triggerRef);
+      const trigger = (operation.kind === "navigate" || operation.kind === "save")
+        ? findActionRef(screen, operation.triggerRef)
+        : findRef(screen, operation.triggerRef);
       const target = operation.targetRef
         ? (operation.kind === "reflect-value"
           ? allBlocks.find((block) => block.type === "value" && (block.ref === operation.targetRef || block.key === operation.targetRef))
@@ -113,7 +123,9 @@ function analyzeOperations(input, sourceText = JSON.stringify(input)) {
           claimedActions.add(claim(screen.id, trigger.ref));
         }
       } else if (operation.kind === "reflect-value") {
-        declaredClaims.add(claim(screen.id, operation.triggerRef, operation.targetRef));
+        // 重複判定は仕様の生文字列ではなく、解決済みの正規化キー(block.ref/value.ref = id||key)で行う。
+        // triggerを id、targetを key（またはその逆）で書いても同一操作として一致させるため。
+        declaredClaims.add(claim(screen.id, trigger?.ref || operation.triggerRef, target?.ref || operation.targetRef));
       }
     }
   }

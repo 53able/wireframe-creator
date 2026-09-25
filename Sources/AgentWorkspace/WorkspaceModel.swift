@@ -56,7 +56,7 @@ final class WorkspaceModel: ObservableObject, Identifiable {
     private var piCancellation: JobCancellation?
     private var buildCancellation: JobCancellation?
     private var activePiProviderID: String?
-    private var activeBuildProviderID: String?
+    private var wasInterruptedByArchive = false
     private var retryHistory: [ChatMessage] = []
     private var retryDraft = ""
     private var retryModelID = ""
@@ -86,8 +86,17 @@ final class WorkspaceModel: ObservableObject, Identifiable {
         toolApprovalContinuation = nil
     }
 
+    /// ジョブが承認待ちを残したまま終わった場合の後始末。
+    /// 他ジョブの承認待ちを誤って閉じないよう、ジョブ固有トークンが一致する場合だけ解決する。
+    private func clearToolApproval(for token: UUID) {
+        guard piJobToken == token, pendingToolApproval != nil || toolApprovalContinuation != nil else { return }
+        resolveToolApproval(false)
+    }
+
     private func awaitToolApproval(_ request: SkillToolApproval) async -> Bool {
         guard canUseSelectedModel, isResponding else { return false }
+        // 前の承認待ちが残っている場合、上書きすると旧継続が永久にリークするため必ず解決してから差し替える。
+        if toolApprovalContinuation != nil { resolveToolApproval(false) }
         return await withCheckedContinuation { continuation in
             pendingToolApproval = request
             toolApprovalContinuation = continuation
@@ -127,6 +136,7 @@ final class WorkspaceModel: ObservableObject, Identifiable {
             buildJobToken = UUID()
             buildJobState = .interrupted
             hasBuildFailure = true
+            wasInterruptedByArchive = true
         }
         isArchived = true
         if hadRunningJob { status = "アーカイブしたため処理を中断しました。復帰後に再試行できます" }
@@ -136,6 +146,10 @@ final class WorkspaceModel: ObservableObject, Identifiable {
     func restore() {
         guard isArchived else { return }
         isArchived = false
+        if wasInterruptedByArchive {
+            hasBuildFailure = false
+            wasInterruptedByArchive = false
+        }
         if piJobState == .interrupted || buildJobState == .interrupted {
             status = "案件を復帰しました。中断された処理は必要に応じて再実行してください"
         }
@@ -145,20 +159,14 @@ final class WorkspaceModel: ObservableObject, Identifiable {
     func suspendForLogout(providerID: String) {
         let selectedProvider = modelID.hasPrefix("\(providerID)/")
         let piAffected = isResponding && activePiProviderID == providerID
-        let buildAffected = isBuilding && activeBuildProviderID == providerID
-        guard selectedProvider || piAffected || buildAffected else { return }
+        guard selectedProvider || piAffected else { return }
         resolveToolApproval(false)
         if piAffected {
             piCancellation?.cancel()
             piJobToken = UUID()
             piJobState = .interrupted
         }
-        if buildAffected {
-            buildCancellation?.cancel()
-            buildJobToken = UUID()
-            buildJobState = .interrupted
-            hasBuildFailure = true
-        }
+        // ローカルビルド（node/python3）はLLM接続に依存しないため、ログアウトでは中断しない。
         status = "モデルからログアウトしたため作業を一時停止しました。再ログイン後に再試行できます"
         touch()
     }
@@ -230,9 +238,14 @@ final class WorkspaceModel: ObservableObject, Identifiable {
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             do {
-                let report = try await Task.detached(priority: .utility) {
-                    try OperationCapabilityService.analyze(json: json, repository: root)
-                }.value
+                let cancellation = JobCancellation()
+                let report = try await withTaskCancellationHandler {
+                    try await Task.detached(priority: .utility) {
+                        try await OperationCapabilityService.analyze(json: json, repository: root, cancellation: cancellation)
+                    }.value
+                } onCancel: {
+                    cancellation.cancel()
+                }
                 guard !Task.isCancelled else { return }
                 guard let self, self.draftRevision == revision, self.jsonText == json else { return }
                 self.operationReport = report
@@ -329,16 +342,17 @@ final class WorkspaceModel: ObservableObject, Identifiable {
         saveRetryContext(kind: .chat, history: history, draft: draft, model: model, revision: capturedRevision, skill: skill)
         Task.detached(priority: .userInitiated) {
             do {
-                let reply = try PiChatService.reply(to: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation, skill: skill, skillArguments: skillArguments, workingDirectory: directory, approveTool: { request in
+                let reply = try await PiChatService.reply(to: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation, skill: skill, skillArguments: skillArguments, workingDirectory: directory, approveTool: { request in
                     await self.awaitToolApproval(request)
                 })
                 await MainActor.run {
+                    self.clearToolApproval(for: token)
                     guard self.piJobToken == token else { return }
                     let text = self.draftRevision == capturedRevision ? reply : "（この応答は、現在の仕様に変更される前の内容をもとにしています）\n\(reply)"
                     self.messages.append(ChatMessage(role: .assistant, text: text)); self.piJobState = .succeeded; self.status = "応答を受け取りました"; self.touch()
                 }
             } catch {
-                await MainActor.run { guard self.piJobToken == token else { return }; self.messages.append(ChatMessage(role: .assistant, text: "モデルに接続できませんでした。\n\(error.localizedDescription)")); self.piJobState = .failed; self.status = "モデルへの接続に失敗しました"; self.touch() }
+                await MainActor.run { self.clearToolApproval(for: token); guard self.piJobToken == token else { return }; self.messages.append(ChatMessage(role: .assistant, text: "モデルに接続できませんでした。\n\(error.localizedDescription)")); self.piJobState = .failed; self.status = "モデルへの接続に失敗しました"; self.touch() }
             }
         }
     }
@@ -352,10 +366,10 @@ final class WorkspaceModel: ObservableObject, Identifiable {
         saveRetryContext(kind: .draft, history: history, draft: draft, model: model, revision: capturedRevision)
         Task.detached(priority: .userInitiated) {
             do {
-                let proposed = try PiChatService.proposeDraft(from: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation)
-                await MainActor.run { guard self.piJobToken == token else { return }; self.acceptProposal(proposed, capturedDraft: draft, capturedRevision: capturedRevision, message: "画面仕様案を作りました。") }
+                let proposed = try await PiChatService.proposeDraft(from: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation)
+                await MainActor.run { self.clearToolApproval(for: token); guard self.piJobToken == token else { return }; self.acceptProposal(proposed, capturedDraft: draft, capturedRevision: capturedRevision, message: "画面仕様案を作りました。") }
             } catch {
-                await MainActor.run { guard self.piJobToken == token else { return }; self.messages.append(ChatMessage(role: .assistant, text: "仕様案を作れませんでした。\n\(error.localizedDescription)")); self.status = "仕様案の作成に失敗しました"; self.piJobState = .failed; self.touch() }
+                await MainActor.run { self.clearToolApproval(for: token); guard self.piJobToken == token else { return }; self.messages.append(ChatMessage(role: .assistant, text: "仕様案を作れませんでした。\n\(error.localizedDescription)")); self.status = "仕様案の作成に失敗しました"; self.piJobState = .failed; self.touch() }
             }
         }
     }
@@ -369,10 +383,10 @@ final class WorkspaceModel: ObservableObject, Identifiable {
         saveRetryContext(kind: .revision, history: history, draft: draft, model: model, revision: capturedRevision)
         Task.detached(priority: .userInitiated) {
             do {
-                let proposed = try PiChatService.proposeDraft(from: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation)
-                await MainActor.run { guard self.piJobToken == token else { return }; self.acceptProposal(proposed, capturedDraft: draft, capturedRevision: capturedRevision, message: "修正指示を反映した仕様案を作りました。") }
+                let proposed = try await PiChatService.proposeDraft(from: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation)
+                await MainActor.run { self.clearToolApproval(for: token); guard self.piJobToken == token else { return }; self.acceptProposal(proposed, capturedDraft: draft, capturedRevision: capturedRevision, message: "修正指示を反映した仕様案を作りました。") }
             } catch {
-                await MainActor.run { guard self.piJobToken == token else { return }; self.messages.append(ChatMessage(role: .assistant, text: "改訂案を作れませんでした。\n\(error.localizedDescription)")); self.status = "改訂案の作成に失敗しました"; self.piJobState = .failed; self.touch() }
+                await MainActor.run { self.clearToolApproval(for: token); guard self.piJobToken == token else { return }; self.messages.append(ChatMessage(role: .assistant, text: "改訂案を作れませんでした。\n\(error.localizedDescription)")); self.status = "改訂案の作成に失敗しました"; self.piJobState = .failed; self.touch() }
             }
         }
     }
@@ -417,13 +431,14 @@ final class WorkspaceModel: ObservableObject, Identifiable {
                 let response: String
                 switch action {
                 case .chat:
-                    response = try PiChatService.reply(to: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation, skill: skill, skillArguments: skillArguments, workingDirectory: directory, approveTool: { request in
+                    response = try await PiChatService.reply(to: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation, skill: skill, skillArguments: skillArguments, workingDirectory: directory, approveTool: { request in
                         await self.awaitToolApproval(request)
                     })
                 case .draft, .revision:
-                    response = try PiChatService.proposeDraft(from: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation)
+                    response = try await PiChatService.proposeDraft(from: history, currentDraft: draft, model: model, repository: root, cancellation: cancellation)
                 }
                 await MainActor.run {
+                    self.clearToolApproval(for: token)
                     guard self.piJobToken == token else { return }
                     if action == .chat {
                         let text = self.draftRevision == capturedRevision ? response : "（この応答は、現在の仕様に変更される前の内容をもとにしています）\n\(response)"
@@ -438,6 +453,7 @@ final class WorkspaceModel: ObservableObject, Identifiable {
                 }
             } catch {
                 await MainActor.run {
+                    self.clearToolApproval(for: token)
                     guard self.piJobToken == token else { return }
                     self.piJobState = .failed
                     self.status = "モデルへの接続に失敗しました"
@@ -458,12 +474,12 @@ final class WorkspaceModel: ObservableObject, Identifiable {
     }
 
     func build() {
-        guard !isBuilding, canUseSelectedModel, !jsonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        buildJobState = .running; hasBuildFailure = false; status = "生成と検証を実行中"; transcript = ""
-        let token = UUID(); buildJobToken = token; let capturedRevision = draftRevision; let json = jsonText; let name = sourceName; let directory = outputDirectory; let root = repository; let cancellation = JobCancellation(); buildCancellation = cancellation; activeBuildProviderID = String(modelID.split(separator: "/", maxSplits: 1).first ?? ""); touch()
+        guard !isBuilding, !isArchived, !jsonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        buildJobState = .running; hasBuildFailure = false; wasInterruptedByArchive = false; status = "生成と検証を実行中"; transcript = ""
+        let token = UUID(); buildJobToken = token; let capturedRevision = draftRevision; let json = jsonText; let name = sourceName; let directory = outputDirectory; let root = repository; let cancellation = JobCancellation(); buildCancellation = cancellation; touch()
         Task.detached(priority: .userInitiated) {
             do {
-                let result = try BuildService.build(json: json, sourceName: name, outputDirectory: directory, repository: root, cancellation: cancellation)
+                let result = try await BuildService.build(json: json, sourceName: name, outputDirectory: directory, repository: root, cancellation: cancellation)
                 await MainActor.run { guard self.buildJobToken == token else { return }; self.artifactURL = result.artifactURL; self.artifactSourceJSON = json; self.artifactSourceRevision = capturedRevision; self.artifactOperationReport = nil; self.scheduleArtifactOperationAnalysis(json); self.transcript = result.transcript; self.status = self.draftRevision == capturedRevision ? "構造チェック合格。HTMLを保存しました" : "前の仕様のHTMLを保存しました。現在の仕様を再生成できます"; self.hasBuildFailure = false; self.buildJobState = .succeeded; self.touch() }
             } catch {
                 await MainActor.run { guard self.buildJobToken == token else { return }; self.transcript = error.localizedDescription; self.status = "生成または検証に失敗しました"; self.hasBuildFailure = true; self.buildJobState = .failed; self.touch() }
@@ -489,9 +505,14 @@ final class WorkspaceModel: ObservableObject, Identifiable {
         let root = repository
         Task { [weak self] in
             do {
-                let report = try await Task.detached(priority: .utility) {
-                    try OperationCapabilityService.analyze(json: json, repository: root)
-                }.value
+                let cancellation = JobCancellation()
+                let report = try await withTaskCancellationHandler {
+                    try await Task.detached(priority: .utility) {
+                        try await OperationCapabilityService.analyze(json: json, repository: root, cancellation: cancellation)
+                    }.value
+                } onCancel: {
+                    cancellation.cancel()
+                }
                 guard let self, self.artifactSourceJSON == json else { return }
                 self.artifactOperationReport = report
             } catch {

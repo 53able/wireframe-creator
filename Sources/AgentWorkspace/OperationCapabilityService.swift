@@ -53,7 +53,8 @@ enum OperationCapabilityService {
         }
     }
 
-    static func analyze(json: String, repository: URL) throws -> OperationCapabilityReport {
+    static func analyze(json: String, repository: URL, cancellation: JobCancellation) async throws -> OperationCapabilityReport {
+        try cancellation.check()
         let script = repository.appendingPathComponent("builder/analyze-operations.mjs")
         guard FileManager.default.fileExists(atPath: script.path) else { throw Failure.missingScript(script) }
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("agent-workspace-operation-\(UUID().uuidString)", isDirectory: true)
@@ -71,12 +72,10 @@ enum OperationCapabilityService {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let output = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
-            throw Failure.commandFailed(process.terminationStatus, output)
+        let outcome = try await ProcessRunner.run(process, output: pipe, cancellation: cancellation)
+        let output = String(decoding: outcome.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard outcome.terminationReason == .exit, outcome.terminationStatus == 0 else {
+            throw Failure.commandFailed(outcome.terminationStatus, output)
         }
         guard let result = output.data(using: .utf8), let report = try? JSONDecoder().decode(OperationCapabilityReport.self, from: result) else {
             throw Failure.invalidOutput(output)

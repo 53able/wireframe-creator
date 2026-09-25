@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,16 @@ VALIDATE = ROOT / "scripts" / "validate-wireframe.py"
 EXAMPLE_INPUT = ROOT / "examples" / "wireframe.json"
 LABELS_PATH = ROOT / "scripts" / "operation-status-labels.json"
 TAILWIND_LICENSE_PATH = ROOT / "assets" / "tailwind.LICENSE.md"
+NODE_MODULES = ROOT / "node_modules"
+
+NODE_UNAVAILABLE_REASON = (
+    "Node.js/npm dependencies are not available "
+    "(missing 'node' executable or node_modules)"
+)
+
+
+def _node_available() -> bool:
+    return shutil.which("node") is not None and NODE_MODULES.is_dir()
 
 OPERATION_REPORT_RE = re.compile(
     r'<script[^>]*\bdata-operation-report\b[^>]*>(.*?)</script\s*>', re.DOTALL
@@ -28,6 +39,7 @@ TAILWIND_STYLE_RE = re.compile(
 )
 
 
+@unittest.skipUnless(_node_available(), NODE_UNAVAILABLE_REASON)
 class TailwindCssTests(unittest.TestCase):
     def run_script(self, script: Path, *args: object) -> subprocess.CompletedProcess[str]:
         return subprocess.run(

@@ -4,7 +4,7 @@
 
   const syncValues = () => {
     document.querySelectorAll('[data-field-value]').forEach((element) => {
-      element.textContent = fieldValues.get(element.dataset.fieldValue) || element.dataset.emptyText || '未選択';
+      element.textContent = fieldValues.get(element.dataset.fieldValue) ?? element.dataset.emptyText ?? '未選択';
     });
   };
 

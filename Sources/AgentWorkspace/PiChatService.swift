@@ -60,7 +60,7 @@ enum PiChatService {
         画面の実装コードやJSONは、求められるまで出力しないでください。
         """
 
-    static func reply(to messages: [ChatMessage], currentDraft: String?, model: String, repository: URL, cancellation: JobCancellation, skill: AgentSkill? = nil, skillArguments: String = "", workingDirectory: URL? = nil, approveTool: (@Sendable (SkillToolApproval) async -> Bool)? = nil) throws -> String {
+    static func reply(to messages: [ChatMessage], currentDraft: String?, model: String, repository: URL, cancellation: JobCancellation, skill: AgentSkill? = nil, skillArguments: String = "", workingDirectory: URL? = nil, approveTool: (@Sendable (SkillToolApproval) async -> Bool)? = nil) async throws -> String {
         var prompt: String
         let systemPrompt: String
         if let skill {
@@ -77,10 +77,13 @@ enum PiChatService {
             prompt += "\n直近の利用者の発言に答えてください。重要な判断が残る場合だけ質問してください。"
             systemPrompt = conversationSystemPrompt
         }
-        return try invoke(prompt: prompt, systemPrompt: systemPrompt, model: model, repository: repository, cancellation: cancellation, skill: skill, workingDirectory: workingDirectory, approveTool: approveTool, images: contextImages(messages))
+        if let skill {
+            return try await invokeSkill(prompt: prompt, systemPrompt: systemPrompt, model: model, repository: repository, cancellation: cancellation, skill: skill, workingDirectory: workingDirectory, approveTool: approveTool, images: contextImages(messages))
+        }
+        return try await invoke(prompt: prompt, systemPrompt: systemPrompt, model: model, repository: repository, cancellation: cancellation, images: contextImages(messages))
     }
 
-    static func proposeDraft(from messages: [ChatMessage], currentDraft: String?, model: String, repository: URL, cancellation: JobCancellation) throws -> String {
+    static func proposeDraft(from messages: [ChatMessage], currentDraft: String?, model: String, repository: URL, cancellation: JobCancellation) async throws -> String {
         let example = try String(contentsOf: repository.appendingPathComponent("examples/wireframe.json"), encoding: .utf8)
         var prompt = transcript(messages)
         if let currentDraft, !currentDraft.isEmpty {
@@ -107,7 +110,7 @@ enum PiChatService {
             形式例:
             \(example)
             """
-        let raw = try invoke(
+        let raw = try await invoke(
             prompt: prompt,
             systemPrompt: "あなたはワイヤーフレーム仕様をJSONで出力する設計者です。指定されたスキーマを厳守し、説明文を出力しません。",
             model: model,
@@ -143,108 +146,170 @@ enum PiChatService {
         Array(messages.filter { $0.role == .user }.flatMap(\.attachments).suffix(8))
     }
 
-    private static func invoke(prompt: String, systemPrompt: String, model: String, repository: URL, cancellation: JobCancellation, skill: AgentSkill? = nil, workingDirectory: URL? = nil, approveTool: (@Sendable (SkillToolApproval) async -> Bool)? = nil, images: [ChatImageAttachment] = []) throws -> String {
+    private static func invoke(prompt: String, systemPrompt: String, model: String, repository: URL, cancellation: JobCancellation, images: [ChatImageAttachment] = []) async throws -> String {
         try cancellation.check()
         let node = try RuntimeTools.find("node")
-        let cli = repository.appendingPathComponent("node_modules/@earendil-works/pi-coding-agent/dist/cli.js")
-        guard FileManager.default.fileExists(atPath: cli.path) else { throw RuntimeToolFailure.missing("モデル実行コンポーネント") }
+        let cli = try commandLineInterface(in: repository)
         let process = Process()
         process.executableURL = node
-        var arguments = [cli.path, "--print", "--mode", skill == nil ? "text" : "json", "--no-session",
+        var arguments = [cli.path, "--print", "--mode", "text", "--no-session",
                          "--no-extensions", "--no-skills", "--no-context-files",
-                         "--model", model, "--system-prompt", systemPrompt]
-        if let skill {
-            guard approveTool != nil else { throw PiChatFailure.approvalUnavailable }
-            let gate = repository.appendingPathComponent("scripts/skill-tool-gate.mjs")
-            guard FileManager.default.fileExists(atPath: gate.path) else { throw PiChatFailure.approvalUnavailable }
-            arguments += ["--skill", skill.fileURL.path, "--extension", gate.path,
-                          "--tools", "read,grep,find,ls,bash,edit,write"]
-        } else {
-            arguments.append("--no-tools")
-        }
+                         "--model", model, "--system-prompt", systemPrompt, "--no-tools"]
         for image in images {
             guard FileManager.default.fileExists(atPath: image.fileURL.path) else { throw ChatImageAttachmentError.missing(image.name) }
             arguments.append("@" + image.fileURL.path)
         }
         process.arguments = arguments
-        if let workingDirectory, skill != nil {
+        process.currentDirectoryURL = repository
+        process.environment = RuntimeTools.environment(prepending: node.deletingLastPathComponent())
+        let input = Pipe()
+        let output = Pipe()
+        let errorLog = try ErrorLog()
+        defer { errorLog.discard() }
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = errorLog.handle
+        let outcome = try await ProcessRunner.run(
+            process,
+            output: output,
+            input: (pipe: input, data: Data((prompt + (images.isEmpty ? "" : "\n")).utf8)),
+            cancellation: cancellation
+        )
+        let rawText = String(decoding: outcome.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard outcome.terminationReason == .exit, outcome.terminationStatus == 0 else {
+            throw PiChatFailure.commandFailed(outcome.terminationStatus, [errorLog.text(), String(rawText.prefix(1200))].filter { !$0.isEmpty }.joined(separator: "\n"))
+        }
+        guard !rawText.isEmpty else { throw PiChatFailure.emptyResponse }
+        return rawText
+    }
+
+    /// スキル実行はツール承認を伴うため `--mode rpc` を使う。
+    ///
+    /// 承認の往復は親プロセスのstdin/stdoutパイプ（`extension_ui_request` / `extension_ui_response`）
+    /// だけで完結する。同一ユーザーで動く子プロセスからはこのパイプに触れられないため、
+    /// 以前のファイルシステム経由の承認プロトコルにあった偽装経路が原理的に塞がれる。
+    private static func invokeSkill(prompt: String, systemPrompt: String, model: String, repository: URL, cancellation: JobCancellation, skill: AgentSkill, workingDirectory: URL?, approveTool: (@Sendable (SkillToolApproval) async -> Bool)?, images: [ChatImageAttachment]) async throws -> String {
+        try cancellation.check()
+        guard let approveTool else { throw PiChatFailure.approvalUnavailable }
+        let node = try RuntimeTools.find("node")
+        let cli = try commandLineInterface(in: repository)
+        let gate = repository.appendingPathComponent("scripts/skill-tool-gate.mjs")
+        guard FileManager.default.fileExists(atPath: gate.path) else { throw PiChatFailure.approvalUnavailable }
+        var imagePayload: [[String: String]] = []
+        for image in images {
+            guard let data = try? Data(contentsOf: image.fileURL) else { throw ChatImageAttachmentError.missing(image.name) }
+            imagePayload.append(["type": "image", "data": data.base64EncodedString(), "mimeType": image.mimeType])
+        }
+        let process = Process()
+        process.executableURL = node
+        process.arguments = [cli.path, "--mode", "rpc", "--no-session",
+                             "--no-extensions", "--no-skills", "--no-context-files",
+                             "--model", model, "--system-prompt", systemPrompt,
+                             "--skill", skill.fileURL.path, "--extension", gate.path,
+                             "--tools", "read,grep,find,ls,bash,edit,write"]
+        if let workingDirectory {
             try FileManager.default.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
             process.currentDirectoryURL = workingDirectory
         } else {
             process.currentDirectoryURL = repository
         }
         var environment = RuntimeTools.environment(prepending: node.deletingLastPathComponent())
-        let approvalDirectory: URL?
-        if let skill {
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("agent-workspace-approval-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            environment["AGENT_WORKSPACE_APPROVAL_DIR"] = directory.path
-            environment["AGENT_WORKSPACE_SKILL_DIR"] = skill.fileURL.deletingLastPathComponent().path
-            approvalDirectory = directory
-        } else {
-            approvalDirectory = nil
-        }
-        defer { if let approvalDirectory { try? FileManager.default.removeItem(at: approvalDirectory) } }
+        environment["AGENT_WORKSPACE_SKILL_DIR"] = skill.fileURL.deletingLastPathComponent().path
         process.environment = environment
-        let approvalTask: Task<Void, Never>? = if let approvalDirectory, let approveTool {
-            Task.detached(priority: .userInitiated) {
-                await monitorApprovals(in: approvalDirectory, approveTool: approveTool)
-            }
-        } else { nil }
-        defer { approvalTask?.cancel() }
         let input = Pipe()
         let output = Pipe()
-        let errorURL = FileManager.default.temporaryDirectory.appendingPathComponent("agent-workspace-pi-\(UUID().uuidString).log")
-        guard FileManager.default.createFile(atPath: errorURL.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        defer { try? FileManager.default.removeItem(at: errorURL) }
-        let errorOutput = try FileHandle(forWritingTo: errorURL)
-        defer { try? errorOutput.close() }
+        let errorLog = try ErrorLog()
+        defer { errorLog.discard() }
         process.standardInput = input
         process.standardOutput = output
-        process.standardError = errorOutput
-        try cancellation.register(process)
+        process.standardError = errorLog.handle
+        let session = RPCSession(process: process, input: input, output: output)
         defer { cancellation.unregister(process) }
-        try process.run()
-        try cancellation.didStart(process)
-        input.fileHandleForWriting.write(Data((prompt + (images.isEmpty ? "" : "\n")).utf8))
-        input.fileHandleForWriting.closeFile()
-        let response = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        try cancellation.check()
-        let rawText = String(decoding: response, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        let errorText = (try? String(contentsOf: errorURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
-            let detail = skill == nil ? String(rawText.prefix(1200)) : skillResponse(from: rawText)
-            throw PiChatFailure.commandFailed(process.terminationStatus, [errorText, detail].filter { !$0.isEmpty }.joined(separator: "\n"))
+        try session.start(cancellation: cancellation)
+        var command: [String: Any] = ["type": "prompt", "message": prompt]
+        if !imagePayload.isEmpty { command["images"] = imagePayload }
+        session.send(command)
+
+        var stream = ""
+        var settled = false
+        await withTaskCancellationHandler {
+            for await line in session.lines {
+                stream += line + "\n"
+                guard let data = line.data(using: .utf8),
+                      let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let type = event["type"] as? String else { continue }
+                if type == "extension_ui_request" {
+                    await respond(to: event, session: session, approveTool: approveTool)
+                } else if type == "agent_settled" {
+                    settled = true
+                    break
+                }
+            }
+        } onCancel: {
+            cancellation.cancel()
         }
-        let text = skill == nil ? rawText : skillResponse(from: rawText)
+        // 応答が確定しても pi は対話セッションとして待機し続ける。abort で実行中の処理を止め、
+        // 標準入力を閉じてEOFを渡すと終了コード0で正常終了する。
+        session.send(["type": "abort"])
+        session.closeInput()
+        let watchdog = Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .seconds(5))
+            session.terminate()
+        }
+        let exit = await session.waitForExit()
+        watchdog.cancel()
+        try cancellation.check()
+        let text = skillResponse(from: stream)
+        guard settled else {
+            throw PiChatFailure.commandFailed(exit.status, [errorLog.text(), text].filter { !$0.isEmpty }.joined(separator: "\n"))
+        }
         guard !text.isEmpty else { throw PiChatFailure.emptyResponse }
         return text
     }
 
-    private static func monitorApprovals(in directory: URL, approveTool: @escaping @Sendable (SkillToolApproval) async -> Bool) async {
-        var handled = Set<String>()
-        let manager = FileManager.default
-        while !Task.isCancelled {
-            let files = (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-            for file in files where file.lastPathComponent.hasPrefix("request-") && file.pathExtension == "json" {
-                guard handled.insert(file.lastPathComponent).inserted,
-                      let data = try? Data(contentsOf: file),
-                      let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let id = request["id"] as? String,
-                      let toolName = request["toolName"] as? String else { continue }
-                let argumentsData = (try? JSONSerialization.data(withJSONObject: request["arguments"] ?? [:], options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
-                let approval = SkillToolApproval(id: id, toolName: toolName, arguments: String(decoding: argumentsData, as: UTF8.self))
-                let allowed = await approveTool(approval)
-                let response = try? JSONSerialization.data(withJSONObject: ["approved": allowed])
-                if let response {
-                    let responseURL = directory.appendingPathComponent("response-\(id).json")
-                    try? response.write(to: responseURL, options: .atomic)
-                }
+    /// 拡張機能のUI要求に答える。`confirm` は承認ダイアログへ、その他のダイアログは
+    /// 応答しないとエージェントが止まるため取り消しとして返す。通知系は応答不要。
+    private static func respond(to event: [String: Any], session: RPCSession, approveTool: @Sendable (SkillToolApproval) async -> Bool) async {
+        guard let id = event["id"] as? String, let method = event["method"] as? String else { return }
+        switch method {
+        case "confirm":
+            let toolName = event["title"] as? String ?? "操作"
+            let arguments = event["message"] as? String ?? ""
+            let allowed = await approveTool(SkillToolApproval(id: id, toolName: toolName, arguments: arguments))
+            session.send(["type": "extension_ui_response", "id": id, "confirmed": allowed])
+        case "select", "input", "editor":
+            session.send(["type": "extension_ui_response", "id": id, "cancelled": true])
+        default:
+            break
+        }
+    }
+
+    private static func commandLineInterface(in repository: URL) throws -> URL {
+        let cli = repository.appendingPathComponent("node_modules/@earendil-works/pi-coding-agent/dist/cli.js")
+        guard FileManager.default.fileExists(atPath: cli.path) else { throw RuntimeToolFailure.missing("モデル実行コンポーネント") }
+        return cli
+    }
+
+    /// 子プロセスの標準エラー出力を一時ファイルへ退避するための小さな入れ物。
+    private final class ErrorLog {
+        let url: URL
+        let handle: FileHandle
+
+        init() throws {
+            url = FileManager.default.temporaryDirectory.appendingPathComponent("agent-workspace-pi-\(UUID().uuidString).log")
+            guard FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+                throw CocoaError(.fileWriteUnknown)
             }
-            try? await Task.sleep(for: .milliseconds(100))
+            handle = try FileHandle(forWritingTo: url)
+        }
+
+        func text() -> String {
+            (try? String(contentsOf: url, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+
+        func discard() {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

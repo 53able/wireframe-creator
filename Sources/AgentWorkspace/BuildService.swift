@@ -23,7 +23,7 @@ enum BuildFailure: LocalizedError {
 }
 
 enum BuildService {
-    static func build(json: String, sourceName: String, outputDirectory: URL, repository: URL, cancellation: JobCancellation) throws -> BuildResult {
+    static func build(json: String, sourceName: String, outputDirectory: URL, repository: URL, cancellation: JobCancellation) async throws -> BuildResult {
         try cancellation.check()
         let builder = repository.appendingPathComponent("builder/build-wireframe.mjs")
         let validator = repository.appendingPathComponent("scripts/validate-wireframe.py")
@@ -43,8 +43,8 @@ enum BuildService {
         let node = try RuntimeTools.find("node")
         let python = try RuntimeTools.find("python3")
         let minScreens = String(max(1, WireframeReviewSpec.read(json)?.screens.count ?? 1))
-        let buildLog = try run(node, [builder.path, input.path, draft.path], in: repository, label: "Markoビルド", cancellation: cancellation)
-        let validationLog = try run(python, [validator.path, draft.path, "--min-screens", minScreens, "--require-actions"], in: repository, label: "構造検証", cancellation: cancellation)
+        let buildLog = try await run(node, [builder.path, input.path, draft.path], in: repository, label: "Markoビルド", cancellation: cancellation)
+        let validationLog = try await run(python, [validator.path, draft.path, "--min-screens", minScreens, "--require-actions"], in: repository, label: "構造検証", cancellation: cancellation)
 
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         let slug = slugify(sourceName)
@@ -58,13 +58,13 @@ enum BuildService {
             let name = "\(slug)-wireframe-\(formatter.string(from: Date())).html"
             let artifact = outputDirectory.appendingPathComponent(name)
             if FileManager.default.fileExists(atPath: artifact.path) {
-                Thread.sleep(forTimeInterval: 0.002)
+                try? await Task.sleep(for: .milliseconds(2))
                 continue
             }
             do {
                 try FileManager.default.copyItem(at: draft, to: artifact)
                 do {
-                    let finalLog = try run(python, [validator.path, artifact.path, "--min-screens", minScreens, "--require-actions"], in: repository, label: "正本検証", cancellation: cancellation)
+                    let finalLog = try await run(python, [validator.path, artifact.path, "--min-screens", minScreens, "--require-actions"], in: repository, label: "正本検証", cancellation: cancellation)
                     try cancellation.check()
                     return BuildResult(artifactURL: artifact, transcript: [buildLog, validationLog, finalLog].joined(separator: "\n"))
                 } catch {
@@ -72,13 +72,13 @@ enum BuildService {
                     throw error
                 }
             } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError {
-                Thread.sleep(forTimeInterval: 0.002)
+                try? await Task.sleep(for: .milliseconds(2))
             }
         }
         throw BuildFailure.noAvailableFilename
     }
 
-    private static func run(_ executable: URL, _ arguments: [String], in directory: URL, label: String, cancellation: JobCancellation) throws -> String {
+    private static func run(_ executable: URL, _ arguments: [String], in directory: URL, label: String, cancellation: JobCancellation) async throws -> String {
         try cancellation.check()
         let process = Process()
         process.executableURL = executable
@@ -88,16 +88,10 @@ enum BuildService {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try cancellation.register(process)
-        defer { cancellation.unregister(process) }
-        try process.run()
-        try cancellation.didStart(process)
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        try cancellation.check()
-        let output = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
-            throw BuildFailure.commandFailed(label, process.terminationStatus, output)
+        let outcome = try await ProcessRunner.run(process, output: pipe, cancellation: cancellation)
+        let output = String(decoding: outcome.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard outcome.terminationReason == .exit, outcome.terminationStatus == 0 else {
+            throw BuildFailure.commandFailed(label, outcome.terminationStatus, output)
         }
         return "\(label): \(output)"
     }
