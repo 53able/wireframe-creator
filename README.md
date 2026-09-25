@@ -80,7 +80,7 @@ v0.0.4では、仕様に宣言した操作と画面上の操作を照合し、�
 scripts/package-mac-workspace.sh
 ```
 
-`dist/Agent-Workspace-0.0.4-<CPU>.dmg`に、アプリ本体、モデル実行コンポーネント、Node.js、Marko・Tailwind CSSの生成資材を収めます。DMG内のアプリをApplicationsへコピーして起動できます。HTMLの初期保存先は「書類/Agent Workspace」です。HTML生成の構造検証にはPython 3が必要です。署名はアドホックで、Appleの公証は未実施です。開発用スクリプトは引き続きリポジトリを指定して起動します。`gray`・`grey`の配色指定はグレー系の`slate`として扱います。
+`dist/Agent-Workspace-<バージョン>-<CPU>.dmg`（バージョンは`packaging/Info.plist`の`CFBundleShortVersionString`から取得、現在0.0.4）に、アプリ本体、モデル実行コンポーネント、Node.js、Marko・Tailwind CSSの生成資材を収めます。DMG内のアプリをApplicationsへコピーして起動できます。HTMLの初期保存先は「書類/Agent Workspace」です。HTML生成の構造検証にはPython 3が必要です。署名はアドホックで、Appleの公証は未実施です。開発用スクリプトは引き続きリポジトリを指定して起動します。`gray`・`grey`の配色指定はグレー系の`slate`として扱います。
 
 ## Marko + Tailwind CSS の新規生成器
 
