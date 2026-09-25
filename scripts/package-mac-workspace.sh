@@ -9,6 +9,8 @@ if [ ! -x node_modules/.bin/tailwindcss ] || [ ! -d node_modules/marko ]; then
   exit 1
 fi
 
+app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" packaging/Info.plist)
+
 swift build -c release
 bin_dir=$(swift build -c release --show-bin-path)
 stage=$(mktemp -d "${TMPDIR:-/tmp}/agent-workspace-package.XXXXXX")
@@ -35,6 +37,6 @@ codesign --force --sign - --timestamp=none "$app_dir"
 cp packaging/README.txt "$stage/お読みください.txt"
 ln -s /Applications "$stage/Applications"
 mkdir -p dist
-archive="$repo_root/dist/Agent-Workspace-0.0.4-$(uname -m).dmg"
+archive="$repo_root/dist/Agent-Workspace-${app_version}-$(uname -m).dmg"
 hdiutil create -quiet -volname "Agent Workspace" -srcfolder "$stage" -format UDZO -ov "$archive"
 echo "Created $archive"
