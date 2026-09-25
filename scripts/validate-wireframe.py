@@ -162,22 +162,31 @@ class ValidationResult:
         }
 
 
-def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationResult:
-    result = ValidationResult(path)
+SCRIPT_DIR = Path(__file__).resolve().parent
+OPERATION_STATUS_LABELS_PATH = SCRIPT_DIR / "operation-status-labels.json"
+TAILWIND_LICENSE_PATH = SCRIPT_DIR.parent / "assets" / "tailwind.LICENSE.md"
+PROFILES = ("pico", "tailwind")
 
-    if not path.exists():
-        result.errors.append(f"File does not exist: {path}")
-        return result
-    if not path.is_file():
-        result.errors.append(f"Path is not a file: {path}")
-        return result
 
-    try:
-        source = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        result.errors.append("File is not valid UTF-8 HTML.")
-        return result
+def load_operation_status_labels(path: Path = OPERATION_STATUS_LABELS_PATH) -> dict[str, str]:
+    """Load the shared status -> visible label map (also consumed by builder/build-wireframe.mjs)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not data or not all(
+        isinstance(key, str) and key and isinstance(value, str) and value for key, value in data.items()
+    ):
+        raise ValueError(f"{path.name} must be a non-empty object of status -> label strings")
+    return data
 
+
+def resolve_profile(parser: WireframeParser, requested: str | None) -> tuple[str, str]:
+    """Return (profile, source). An explicit caller choice always wins over the HTML self-declaration."""
+    if requested is not None:
+        return requested, "argument"
+    return ("tailwind" if parser.tailwind_version is not None else "pico"), "html"
+
+
+def validate_common_source(source: str, result: ValidationResult) -> None:
+    """Style-independent checks on the raw source text (run before HTML parsing)."""
     if not re.match(r"\s*<!doctype\s+html", source, re.IGNORECASE):
         result.errors.append("Missing <!doctype html> declaration.")
 
@@ -187,13 +196,9 @@ def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationR
             "Unresolved template placeholders remain: " + ", ".join(placeholders[:10])
         )
 
-    parser = WireframeParser()
-    try:
-        parser.feed(source)
-    except Exception as exc:  # HTMLParser failures are uncommon but should be actionable.
-        result.errors.append(f"HTML parsing failed: {exc}")
-        return result
 
+def validate_common(parser: WireframeParser, result: ValidationResult, min_screens: int, require_actions: bool) -> None:
+    """Style-independent contract: document shell, screens, transitions, self-containment."""
     if not parser.html_lang:
         result.errors.append("The <html> element must declare a lang attribute.")
     if not parser.has_viewport:
@@ -244,76 +249,150 @@ def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationR
         result.errors.append("External <script src> dependencies are not allowed.")
     if parser.stylesheet_links:
         result.errors.append("External or linked stylesheets are not allowed; inline CSS instead.")
-    operation_count = 0
-    if parser.tailwind_version is not None:
-        blocks = re.findall(
-            r'<style\b(?=[^>]*\bdata-tailwind-css\b)[^>]*>(.*?)</style\s*>',
-            source,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if len(blocks) != 1:
-            result.errors.append("HTML must contain exactly one complete data-tailwind-css style element.")
-        elif (Path(__file__).resolve().parent.parent / "assets" / "tailwind.LICENSE.md").read_text(encoding="utf-8").strip() not in blocks[0]:
-            result.errors.append("Inline Tailwind CSS must contain the complete MIT license notice.")
-        elif not re.search(r"tailwindcss v" + re.escape(parser.tailwind_version) + r"\b", blocks[0]):
-            result.errors.append("Inline Tailwind CSS version does not match data-tailwind-version.")
-        elif re.search(r"@import\b|url\s*\(\s*['\"]?\s*(?:https?:|//)", blocks[0], re.IGNORECASE):
-            result.errors.append("Inline Tailwind CSS must not reference external assets.")
-        if len(parser.operation_reports) != 1:
-            result.errors.append(f"Expected one embedded operation report; found {len(parser.operation_reports)}.")
-        else:
-            try:
-                report = json.loads(parser.operation_reports[0])
-                operations = report["operations"]
-                if report.get("version") != 1 or not isinstance(operations, list):
-                    raise ValueError("operation report version or operations is invalid")
-                if not re.fullmatch(r"[0-9a-f]{64}", report.get("sourceDigest", "")):
-                    raise ValueError("operation report source digest is missing or invalid")
-                expected: dict[str, str] = {}
-                allowed = {"working", "navigation-only", "display-only", "unsupported"}
-                for operation in operations:
-                    operation_id = operation["id"]
-                    status = operation["status"]
-                    if not isinstance(operation_id, str) or not operation_id or operation_id in expected:
-                        raise ValueError("operation IDs must be nonempty and unique")
-                    if status not in allowed:
-                        raise ValueError(f"unsupported operation status: {status}")
-                    if operation.get("screenId") not in known_screens:
-                        raise ValueError(f"unknown operation screen: {operation_id}")
-                    expected[operation_id] = status
-                actual: dict[str, str] = {}
-                actual_expectations: dict[str, str] = {}
-                for operation_id, status, expectation in parser.operation_rows:
-                    if not operation_id or operation_id in actual:
-                        raise ValueError("HTML operation IDs must be nonempty and unique")
-                    actual[operation_id] = status
-                    actual_expectations[operation_id] = expectation
-                if expected != actual:
-                    result.errors.append("Operation report and visible operation markers do not match.")
-                expected_expectations = {operation["id"]: operation.get("expectedResult") or "" for operation in operations}
-                if expected_expectations != actual_expectations:
-                    result.errors.append("Operation expectations do not match the embedded report.")
-                labels = {"working": "動作する", "navigation-only": "画面遷移のみ", "display-only": "表示のみ", "unsupported": "未対応"}
-                expected_badges = [labels[operation["status"]] for operation in operations]
-                if [badge.strip() for badge in parser.operation_badges] != expected_badges:
-                    result.errors.append("Operation status labels do not match the embedded report.")
-                operation_count = len(expected)
-            except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
-                result.errors.append(f"Invalid embedded operation report: {exc}")
-    else:
-        try:
-            validate_pico_style(source)
-        except ValueError as exc:
-            result.errors.append(str(exc))
+
+
+def validate_common_review_blocks(parser: WireframeParser, result: ValidationResult) -> None:
+    """Style-independent review content: assumptions and open questions."""
     if parser.assumptions_blocks == 0:
         result.errors.append("Missing an element with data-assumptions.")
     if parser.open_question_blocks == 0:
         result.errors.append("Missing an element with data-open-questions.")
 
+
+def validate_common_warnings(source: str, parser: WireframeParser, result: ValidationResult) -> None:
     if not re.search(r":focus-visible|:focus\b", source):
         result.warnings.append("No explicit keyboard focus style was detected.")
     if not parser.inline_script_count and parser.action_targets:
         result.warnings.append("Transitions exist, but no inline script was detected to operate them.")
+
+
+def validate_pico_profile(source: str, parser: WireframeParser, result: ValidationResult) -> int:
+    """Pico profile: pinned, license-complete inline Pico CSS. Returns the verified operation count (always 0)."""
+    try:
+        validate_pico_style(source)
+    except ValueError as exc:
+        result.errors.append(str(exc))
+    return 0
+
+
+def _validate_tailwind_style(source: str, parser: WireframeParser, result: ValidationResult) -> None:
+    blocks = re.findall(
+        r'<style\b(?=[^>]*\bdata-tailwind-css\b)[^>]*>(.*?)</style\s*>',
+        source,
+        re.IGNORECASE | re.DOTALL,
+    )
+    try:
+        license_text = TAILWIND_LICENSE_PATH.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        result.errors.append(f"Cannot load the Tailwind license notice for validation: {exc}")
+        return
+    if len(blocks) != 1:
+        result.errors.append("HTML must contain exactly one complete data-tailwind-css style element.")
+    elif not parser.tailwind_version:
+        result.errors.append("The data-tailwind-css style element must declare data-tailwind-version.")
+    elif license_text not in blocks[0]:
+        result.errors.append("Inline Tailwind CSS must contain the complete MIT license notice.")
+    elif not re.search(r"tailwindcss v" + re.escape(parser.tailwind_version) + r"\b", blocks[0]):
+        result.errors.append("Inline Tailwind CSS version does not match data-tailwind-version.")
+    elif re.search(r"@import\b|url\s*\(\s*['\"]?\s*(?:https?:|//)", blocks[0], re.IGNORECASE):
+        result.errors.append("Inline Tailwind CSS must not reference external assets.")
+
+
+def _validate_operation_report(parser: WireframeParser, result: ValidationResult) -> int:
+    if len(parser.operation_reports) != 1:
+        result.errors.append(f"Expected one embedded operation report; found {len(parser.operation_reports)}.")
+        return 0
+    try:
+        labels = load_operation_status_labels()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        result.errors.append(f"Cannot load shared operation status labels: {exc}")
+        return 0
+    known_screens = set(parser.screen_ids)
+    try:
+        report = json.loads(parser.operation_reports[0])
+        operations = report["operations"]
+        if report.get("version") != 1 or not isinstance(operations, list):
+            raise ValueError("operation report version or operations is invalid")
+        if not re.fullmatch(r"[0-9a-f]{64}", report.get("sourceDigest", "")):
+            raise ValueError("operation report source digest is missing or invalid")
+        expected: dict[str, str] = {}
+        for operation in operations:
+            operation_id = operation["id"]
+            status = operation["status"]
+            if not isinstance(operation_id, str) or not operation_id or operation_id in expected:
+                raise ValueError("operation IDs must be nonempty and unique")
+            if status not in labels:
+                raise ValueError(f"unsupported operation status: {status}")
+            if operation.get("screenId") not in known_screens:
+                raise ValueError(f"unknown operation screen: {operation_id}")
+            expected[operation_id] = status
+        actual: dict[str, str] = {}
+        actual_expectations: dict[str, str] = {}
+        for operation_id, status, expectation in parser.operation_rows:
+            if not operation_id or operation_id in actual:
+                raise ValueError("HTML operation IDs must be nonempty and unique")
+            actual[operation_id] = status
+            actual_expectations[operation_id] = expectation
+        if expected != actual:
+            result.errors.append("Operation report and visible operation markers do not match.")
+        expected_expectations = {operation["id"]: operation.get("expectedResult") or "" for operation in operations}
+        if expected_expectations != actual_expectations:
+            result.errors.append("Operation expectations do not match the embedded report.")
+        expected_badges = [labels[operation["status"]] for operation in operations]
+        if [badge.strip() for badge in parser.operation_badges] != expected_badges:
+            result.errors.append("Operation status labels do not match the embedded report.")
+        return len(expected)
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        result.errors.append(f"Invalid embedded operation report: {exc}")
+        return 0
+
+
+def validate_tailwind_profile(source: str, parser: WireframeParser, result: ValidationResult) -> int:
+    """Tailwind profile: inline Tailwind CSS contract plus the embedded operation report. Returns the operation count."""
+    _validate_tailwind_style(source, parser, result)
+    return _validate_operation_report(parser, result)
+
+
+PROFILE_VALIDATORS = {
+    "pico": validate_pico_profile,
+    "tailwind": validate_tailwind_profile,
+}
+
+
+def validate(path: Path, min_screens: int, require_actions: bool, profile: str | None = None) -> ValidationResult:
+    result = ValidationResult(path)
+    if profile is not None and profile not in PROFILE_VALIDATORS:
+        result.errors.append(f"Unknown validation profile: {profile}")
+        return result
+
+    if not path.exists():
+        result.errors.append(f"File does not exist: {path}")
+        return result
+    if not path.is_file():
+        result.errors.append(f"Path is not a file: {path}")
+        return result
+
+    try:
+        source = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        result.errors.append("File is not valid UTF-8 HTML.")
+        return result
+
+    validate_common_source(source, result)
+
+    parser = WireframeParser()
+    try:
+        parser.feed(source)
+    except Exception as exc:  # HTMLParser failures are uncommon but should be actionable.
+        result.errors.append(f"HTML parsing failed: {exc}")
+        return result
+
+    selected_profile, profile_source = resolve_profile(parser, profile)
+
+    validate_common(parser, result, min_screens, require_actions)
+    operation_count = PROFILE_VALIDATORS[selected_profile](source, parser, result)
+    validate_common_review_blocks(parser, result)
+    validate_common_warnings(source, parser, result)
 
     result.details = {
         "screens": parser.screen_ids,
@@ -324,6 +403,8 @@ def validate(path: Path, min_screens: int, require_actions: bool) -> ValidationR
         "inlineScripts": parser.inline_script_count,
         "picoVersion": parser.pico_version,
         "tailwindVersion": parser.tailwind_version,
+        "profile": selected_profile,
+        "profileSource": profile_source,
     }
     return result
 
@@ -340,13 +421,19 @@ def main() -> int:
         "--require-actions", action="store_true", help="Require at least one screen transition"
     )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    parser.add_argument(
+        "--profile",
+        choices=PROFILES,
+        default=None,
+        help="Style profile to enforce (pico or tailwind). Defaults to the profile the HTML declares.",
+    )
     args = parser.parse_args()
 
     if args.min_screens < 1:
         print("ERROR: --min-screens must be at least 1.", file=sys.stderr)
         return 2
 
-    result = validate(args.html_file, args.min_screens, args.require_actions)
+    result = validate(args.html_file, args.min_screens, args.require_actions, args.profile)
 
     if args.json:
         print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))

@@ -13,6 +13,15 @@
 - 完了時刻付きの正本HTMLを生成し、静的HTMLの保存とブラウザ引継ぎを検証
 - 新規作成、壁打ち、既存ワイヤーフレームの段階的改稿に対応
 
+## 利用形態
+
+本リポジトリには2つの利用形態があります。
+
+- **エージェントスキルとして使う場合**: `SKILL.md`が定義する経路で、Pico CSS v2.1.1をインライン化したHTMLを生成します。Python 3.10以上のみで動作し、Node.jsやSwiftは不要です。詳細は[インストール](#インストール)と[Pico CSS](#pico-css)を参照してください。
+- **同梱Macアプリ（`Sources/AgentWorkspace`）を使う場合**: Marko 6＋Tailwind CSS 4でHTMLを生成する独立した経路で、Node.jsとSwiftのビルド環境が必要です。詳細は[Macワークスペース（MVP第1スライス）](#macワークスペースmvp第1スライス)と[Marko + Tailwind CSS の新規生成器](#marko--tailwind-css-の新規生成器)を参照してください。
+
+スキル本体（`VERSION`ファイル、現在3.1.0）とMacアプリ（`packaging/Info.plist`等、現在0.0.4）は別々にバージョン管理されています。
+
 ## インストール
 
 [`skills`](https://github.com/vercel-labs/skills) CLIを使用します。

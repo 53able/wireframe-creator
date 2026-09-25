@@ -42,8 +42,9 @@ enum BuildService {
 
         let node = try RuntimeTools.find("node")
         let python = try RuntimeTools.find("python3")
+        let minScreens = String(max(1, WireframeReviewSpec.read(json)?.screens.count ?? 1))
         let buildLog = try run(node, [builder.path, input.path, draft.path], in: repository, label: "Markoビルド", cancellation: cancellation)
-        let validationLog = try run(python, [validator.path, draft.path, "--min-screens", "1", "--require-actions"], in: repository, label: "構造検証", cancellation: cancellation)
+        let validationLog = try run(python, [validator.path, draft.path, "--min-screens", minScreens, "--require-actions"], in: repository, label: "構造検証", cancellation: cancellation)
 
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         let slug = slugify(sourceName)
@@ -63,7 +64,7 @@ enum BuildService {
             do {
                 try FileManager.default.copyItem(at: draft, to: artifact)
                 do {
-                    let finalLog = try run(python, [validator.path, artifact.path, "--min-screens", "1", "--require-actions"], in: repository, label: "正本検証", cancellation: cancellation)
+                    let finalLog = try run(python, [validator.path, artifact.path, "--min-screens", minScreens, "--require-actions"], in: repository, label: "正本検証", cancellation: cancellation)
                     try cancellation.check()
                     return BuildResult(artifactURL: artifact, transcript: [buildLog, validationLog, finalLog].joined(separator: "\n"))
                 } catch {

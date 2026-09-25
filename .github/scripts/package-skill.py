@@ -14,6 +14,16 @@ ROOT_FILES = ("SKILL.md", "LICENSE", "VERSION")
 RESOURCE_DIRS = ("assets", "references", "scripts")
 EXCLUDED_PARTS = {"__pycache__", ".DS_Store"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
+# Mac Workspace app-only files (Node/Swift tooling) that live alongside the
+# skill's resource directories but must never ship in the skill distribution ZIP.
+EXCLUDED_RELATIVE_PATHS = {
+    "scripts/provider-bridge.mjs",
+    "scripts/skill-catalog.mjs",
+    "scripts/skill-tool-gate.mjs",
+    "scripts/package-mac-workspace.sh",
+    "scripts/run-mac-workspace.sh",
+    "assets/tailwind.LICENSE.md",
+}
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
@@ -50,6 +60,8 @@ def collect_files(root: Path) -> list[Path]:
             if any(part in EXCLUDED_PARTS for part in relative.parts):
                 continue
             if path.suffix in EXCLUDED_SUFFIXES:
+                continue
+            if relative.as_posix() in EXCLUDED_RELATIVE_PATHS:
                 continue
             files.append(path)
     return sorted(files, key=lambda path: path.relative_to(root).as_posix())

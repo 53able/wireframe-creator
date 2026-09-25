@@ -129,6 +129,15 @@ validate(input);
 let operationReport;
 try { operationReport = analyzeOperations(input, sourceText); }
 catch (error) { fail(error instanceof Error ? error.message.replace(/^Invalid operation data: /, "") : String(error)); }
+// Shared with scripts/validate-wireframe.py so visible badges and validation never drift apart.
+let operationStatusLabels;
+try { operationStatusLabels = JSON.parse(await readFile(join(root, "scripts", "operation-status-labels.json"), "utf8")); }
+catch { fail("操作ステータスの表示名定義 scripts/operation-status-labels.json を読み取れません"); }
+for (const operation of operationReport.operations) {
+  const label = operationStatusLabels?.[operation.status];
+  if (typeof label !== "string" || !label) fail(`操作ステータス「${operation.status}」の表示名が scripts/operation-status-labels.json にありません`);
+}
+input.operationStatusLabels = operationStatusLabels;
 input.operationReport = operationReport;
 input.operationReportJson = JSON.stringify(operationReport).replace(/</g, "\\u003c");
 const temporary = await mkdtemp(join(tmpdir(), "wireframe-marko-"));

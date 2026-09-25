@@ -59,7 +59,7 @@
             <ul class="grid gap-2 text-sm">
               <for|operation| of=input.operationReport.operations>
                 <li class="rounded-lg border border-slate-200 bg-slate-50 p-3" data-operation-id=operation.id data-operation-status=operation.status data-operation-expected=operation.expectedResult>
-                  <div class="flex items-start justify-between gap-2"><span class="font-semibold">${operation.label}</span><span class="operation-status shrink-0 rounded-full px-2 py-1 text-xs font-medium">${operation.status === "working" ? "動作する" : operation.status === "navigation-only" ? "画面遷移のみ" : operation.status === "display-only" ? "表示のみ" : "未対応"}</span></div>
+                  <div class="flex items-start justify-between gap-2"><span class="font-semibold">${operation.label}</span><span class="operation-status shrink-0 rounded-full px-2 py-1 text-xs font-medium">${input.operationStatusLabels[operation.status]}</span></div>
                   <if=operation.expectedResult><p class="mt-1 text-slate-700">期待する結果：${operation.expectedResult}</p></if>
                   <p class="mt-1 text-slate-600">${operation.reason}</p>
                 </li>
