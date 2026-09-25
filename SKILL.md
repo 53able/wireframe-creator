@@ -147,7 +147,7 @@ python3 "$SKILL_ROOT/scripts/validate-wireframe.py" \
   --require-actions
 ```
 
-2. 新規作成または2画面以上の改稿では、画面数に応じて `--min-screens 2` 以上を指定する。
+2. 新規作成または2画面以上の改稿では、画面数に応じて `--min-screens 2` 以上を指定する。このスキルが生成するPico版HTMLでは `--profile pico` を付けると、HTML側の宣言に頼らずPico検証を強制できる（省略時はHTMLの宣言から自動判定する）。
 3. `SKILL_ROOT` と `OUTPUT_ROOT` を使い、スクリプトと検証対象HTMLをそれぞれの起点から解決する。成果物の報告時は `OUTPUT_ROOT` 配下のファイルをリポジトリ相対パスへ直す。
 4. 検証エラーに従ってHTMLを修正し、合格するまで再実行する。
 5. 外部URLが必要でも埋め込まず、必要な理由を前提欄へ記録する。`style[data-pico-css]`が1件あり、固定バージョンとMITライセンス全文を保持していることも検証器で確認する。

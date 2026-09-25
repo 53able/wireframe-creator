@@ -1,0 +1,27 @@
+@import "tailwindcss" source(none);
+@source "./wireframe.marko";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+}
+
+@layer base {
+  :focus-visible { outline: 3px solid #4f46e5; outline-offset: 3px; }
+  button { cursor: pointer; }
+}
+
+@layer components {
+  [data-wireframe-root] .screen { display: none; }
+  [data-wireframe-root] .screen.is-active { display: block; }
+  [data-wireframe-root] .screen-nav [aria-current="page"] { background: #e0e7ff; border-color: #6366f1; color: #312e81; font-weight: 700; }
+  [data-palette="slate"] { --accent: #334155; --accent-soft: #e2e8f0; }
+  [data-palette="indigo"] { --accent: #4338ca; --accent-soft: #e0e7ff; }
+  [data-palette="teal"] { --accent: #0f766e; --accent-soft: #ccfbf1; }
+  [data-wireframe-root] .primary-action { background: var(--accent); color: white; }
+  [data-wireframe-root] .primary-action:hover { filter: brightness(1.15); }
+  [data-wireframe-root] .accent-panel { background: var(--accent-soft); border-color: var(--accent); }
+  [data-wireframe-root] [data-operation-status="working"] .operation-status { background: #dcfce7; color: #166534; }
+  [data-wireframe-root] [data-operation-status="navigation-only"] .operation-status { background: #e0e7ff; color: #3730a3; }
+  [data-wireframe-root] [data-operation-status="display-only"] .operation-status { background: #fef3c7; color: #92400e; }
+  [data-wireframe-root] [data-operation-status="unsupported"] .operation-status { background: #fee2e2; color: #991b1b; }
+}

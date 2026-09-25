@@ -1,0 +1,108 @@
+<html lang="ja" data-palette=input.palette>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="color-scheme" content="light"/>
+    <title>${input.title} — Wireframe</title>
+    <html-style data-tailwind-css data-tailwind-version="4.3.3">__INLINE_CSS__</html-style>
+  </head>
+  <body class="m-0 bg-slate-100 font-sans text-slate-900">
+    <div data-wireframe-root class="min-h-screen">
+      <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-4 shadow-sm lg:px-8">
+        <div>
+          <p class="mb-1 text-xs font-bold tracking-widest text-slate-500 uppercase">Wireframe / ${input.status}</p>
+          <h1 class="m-0 text-xl font-semibold tracking-tight lg:text-2xl">${input.title}</h1>
+        </div>
+        <span class="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium">Low fidelity</span>
+      </header>
+      <div class="grid min-h-[calc(100vh-85px)] lg:grid-cols-[minmax(17rem,21rem)_minmax(0,1fr)]">
+        <aside class="border-b border-slate-200 bg-white p-5 lg:border-r lg:border-b-0 lg:p-6" aria-label="ワイヤーフレーム情報">
+          <h2 class="mb-3 text-sm font-bold tracking-wide text-slate-500 uppercase">検証ブリーフ</h2>
+          <dl class="grid gap-3 text-sm">
+            <dt class="font-semibold">対象ユーザー</dt><dd class="-mt-3 text-slate-600">${input.brief.targetUser}</dd>
+            <dt class="font-semibold">課題</dt><dd class="-mt-3 text-slate-600">${input.brief.problem}</dd>
+            <dt class="font-semibold">ユーザー成果</dt><dd class="-mt-3 text-slate-600">${input.brief.userOutcome}</dd>
+            <dt class="font-semibold">ビジネス成果</dt><dd class="-mt-3 text-slate-600">${input.brief.businessOutcome}</dd>
+            <dt class="font-semibold">ソリューション境界</dt><dd class="-mt-3 text-slate-600">${input.brief.solutionBoundary}</dd>
+            <dt class="font-semibold">仮説</dt><dd class="-mt-3 text-slate-600">${input.brief.hypothesis}</dd>
+            <dt class="font-semibold">最大リスク</dt><dd class="-mt-3 text-slate-600">${input.brief.riskiestAssumption}</dd>
+            <dt class="font-semibold">今回学ぶこと</dt><dd class="-mt-3 text-slate-600">${input.brief.learningGoal}</dd>
+          </dl>
+          <if=input.decisions.length>
+            <section data-review-focus class="accent-panel mt-6 rounded-xl border-l-4 p-4">
+              <h2 class="mb-2 text-sm font-bold">今回決めること</h2>
+              <ul class="list-disc space-y-1 pl-5 text-sm">
+                <for|decision, index| of=input.decisions>
+                  <li data-decision-id=`D-${String(index + 1).padStart(2, "0")}`>${decision}</li>
+                </for>
+              </ul>
+            </section>
+          </if>
+          <h2 class="mt-7 mb-3 text-sm font-bold tracking-wide text-slate-500 uppercase">画面</h2>
+          <nav class="screen-nav grid gap-2" aria-label="画面一覧">
+            <for|screen, index| of=input.screens>
+              <button type="button" class="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100" data-nav-target=screen.id aria-current=(index === 0 ? "page" : undefined)>
+                ${index + 1}. ${screen.name}
+              </button>
+            </for>
+          </nav>
+          <h2 class="mt-7 mb-2 text-sm font-bold tracking-wide text-slate-500 uppercase">前提</h2>
+          <ul data-assumptions class="list-disc space-y-1 pl-5 text-sm text-slate-600"><for|item| of=input.assumptions><li>${item}</li></for></ul>
+          <h2 class="mt-7 mb-2 text-sm font-bold tracking-wide text-slate-500 uppercase">未解決事項</h2>
+          <ul data-open-questions class="list-disc space-y-1 pl-5 text-sm text-slate-600"><for|item| of=input.openQuestions><li>${item}</li></for></ul>
+          <h2 class="mt-7 mb-2 text-sm font-bold tracking-wide text-slate-500 uppercase">操作</h2>
+          <p class="text-sm text-slate-600">画面内のボタン、または画面一覧から移動する。Homeキーで開始画面へ戻る。</p>
+          <section class="mt-7" aria-labelledby="operation-report-title">
+            <h2 id="operation-report-title" class="mb-2 text-sm font-bold tracking-wide text-slate-500 uppercase">動作の確認範囲</h2>
+            <if=(input.operationReport.declaredCount === 0)><p class="mb-3 text-sm text-amber-800">画面上の操作のみ分類しています。仕様の自由文に書かれた動作は未照合です。</p></if>
+            <if=(input.operationReport.operations.some((operation) => operation.status === "unsupported"))><p class="mb-3 text-sm font-semibold text-amber-800">操作確認待ち：未対応の動作があります。</p></if>
+            <ul class="grid gap-2 text-sm">
+              <for|operation| of=input.operationReport.operations>
+                <li class="rounded-lg border border-slate-200 bg-slate-50 p-3" data-operation-id=operation.id data-operation-status=operation.status data-operation-expected=operation.expectedResult>
+                  <div class="flex items-start justify-between gap-2"><span class="font-semibold">${operation.label}</span><span class="operation-status shrink-0 rounded-full px-2 py-1 text-xs font-medium">${input.operationStatusLabels[operation.status]}</span></div>
+                  <if=operation.expectedResult><p class="mt-1 text-slate-700">期待する結果：${operation.expectedResult}</p></if>
+                  <p class="mt-1 text-slate-600">${operation.reason}</p>
+                </li>
+              </for>
+            </ul>
+          </section>
+        </aside>
+        <main class="min-w-0 p-4 lg:p-8">
+          <div class="mx-auto max-w-5xl overflow-hidden rounded-2xl border-2 border-slate-700 bg-white shadow-xl" aria-live="polite">
+            <div class="flex gap-2 border-b border-slate-200 bg-slate-50 px-5 py-3" aria-hidden="true"><span class="size-2 rounded-full bg-slate-300"></span><span class="size-2 rounded-full bg-slate-300"></span><span class="size-2 rounded-full bg-slate-300"></span></div>
+            <for|screen, index| of=input.screens>
+              <section class=(index === 0 ? "screen is-active p-5 sm:p-8 lg:p-12" : "screen p-5 sm:p-8 lg:p-12") data-screen-id=screen.id data-start-screen=(index === 0 ? "" : undefined) aria-labelledby=`${screen.id}-title`>
+                <p class="mb-2 text-xs font-bold tracking-widest text-slate-500 uppercase">Screen ${String(index + 1).padStart(2, "0")}</p>
+                <h2 id=`${screen.id}-title` tabindex="-1" class="mb-3 text-2xl font-semibold tracking-tight sm:text-3xl">${screen.name}</h2>
+                <p class="max-w-2xl text-base text-slate-600">${screen.purpose}</p>
+                <div class="mt-6 grid gap-4">
+                  <for|block| of=screen.blocks>
+                    <if=(block.type === "paragraph")><p class="max-w-2xl leading-7">${block.text}</p></if>
+                    <if=(block.type === "panel")><div class="accent-panel rounded-xl border p-5"><h3 class="mb-2 font-semibold">${block.title}</h3><p>${block.text}</p></div></if>
+                    <if=(block.type === "field")>
+                      <label class="grid max-w-xl gap-2 text-sm font-medium">
+                        ${block.label}
+                        <if=(block.inputType === "textarea")><textarea class="min-h-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base" placeholder=block.placeholder data-field-key=block.key></textarea></if>
+                        <else><input class="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base" type=block.inputType placeholder=block.placeholder data-field-key=block.key/></else>
+                      </label>
+                    </if>
+                    <if=(block.type === "select")><label class="grid max-w-xl gap-2 text-sm font-medium">${block.label}<select class="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base" data-field-key=block.key><option value="">選択してください</option><for|option| of=block.options><option value=option>${option}</option></for></select></label></if>
+                    <if=(block.type === "value")><dl class="accent-panel rounded-xl border p-5"><dt class="text-sm font-semibold">${block.label}</dt><dd class="mt-2 text-lg" data-field-value=block.key data-empty-text=block.emptyText>${block.emptyText}</dd></dl></if>
+                    <if=(block.type === "list")><ul class="list-disc space-y-2 pl-6"><for|item| of=block.items><li>${item}</li></for></ul></if>
+                  </for>
+                </div>
+                <div class="mt-8 flex flex-wrap gap-3">
+                  <for|action| of=screen.actions>
+                    <button type="button" class=(action.variant === "secondary" ? "min-h-11 rounded-lg border border-slate-300 bg-white px-5 py-2 font-medium hover:bg-slate-100" : "primary-action min-h-11 rounded-lg px-5 py-2 font-medium") data-action-target=action.target>${action.label}</button>
+                  </for>
+                </div>
+                <aside class="mt-8 border-l-4 border-slate-300 bg-slate-50 p-4"><h3 class="mb-1 text-sm font-bold">検証ポイント</h3><p class="text-sm text-slate-600">${screen.testNote}</p></aside>
+              </section>
+            </for>
+          </div>
+        </main>
+      </div>
+    </div>
+    <html-script type="application/json" data-operation-report data-operation-report-version="1" data-operation-report-source="builder">$!{input.operationReportJson}</html-script>
+  </body>
+</html>

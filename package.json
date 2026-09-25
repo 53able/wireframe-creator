@@ -1,0 +1,18 @@
+{
+  "name": "wireframe-creator-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:example": "node builder/build-wireframe.mjs examples/wireframe.json dist/wireframe.html"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "marko": "6.3.53"
+  },
+  "devDependencies": {
+    "@marko/vite": "6.1.12",
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.0"
+  }
+}

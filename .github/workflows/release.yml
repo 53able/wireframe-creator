@@ -46,6 +46,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: validate
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+      version: ${{ steps.prepare.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -94,7 +97,7 @@ jobs:
           git tag -a "${TAG}" -m "${TAG}"
           git push --atomic origin HEAD:main "${TAG}"
 
-      - name: Create GitHub release with skill ZIP
+      - name: Create draft GitHub release with skill ZIP
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.prepare.outputs.version }}
@@ -104,4 +107,38 @@ jobs:
             "dist/wireframe-creator-v${VERSION}.zip" \
             --title "wireframe-creator ${TAG}" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --draft \
             --verify-tag
+
+  build-mac-app:
+    if: github.ref == 'refs/heads/main'
+    needs: release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build and package the macOS app
+        run: ./scripts/package-mac-workspace.sh
+
+      - name: Upload DMG to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ needs.release.outputs.tag }}" dist/Agent-Workspace-*.dmg --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.release.outputs.tag }}" --draft=false

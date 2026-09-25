@@ -1,0 +1,50 @@
+{
+  "title": "予約フローの検証",
+  "status": "検討中",
+  "palette": "indigo",
+  "brief": {
+    "targetUser": "初めて相談を予約する人",
+    "problem": "予約前に必要な情報と次の操作が分かりにくい",
+    "userOutcome": "希望する日時を選び、予約内容を確認できる",
+    "businessOutcome": "予約フローの離脱要因を特定する",
+    "solutionBoundary": "日時選択から確認まで。実際の予約登録は対象外",
+    "hypothesis": "候補日と確認内容を順に示すと、迷わず進める",
+    "riskiestAssumption": "利用者が候補日時の違いを理解できる",
+    "learningGoal": "確認画面までの操作が自然につながるかを確かめる"
+  },
+  "decisions": ["候補日時の情報量は十分か"],
+  "assumptions": ["候補日時は仮のデータ"],
+  "openQuestions": ["確認後の通知方法"],
+  "screens": [
+    {
+      "id": "start",
+      "name": "日時を選ぶ",
+      "purpose": "候補から希望日時を選択する",
+      "blocks": [
+        { "type": "panel", "title": "候補日時", "text": "来週の候補日時から一つ選びます。" },
+        { "type": "select", "key": "appointment", "label": "希望日時", "options": ["来週火曜日 10:00", "来週木曜日 14:00", "来週土曜日 11:00"] }
+      ],
+      "actions": [{ "id": "show-confirm", "label": "内容を確認する", "target": "confirm", "variant": "primary" }],
+      "operations": [
+        { "id": "show-appointment", "label": "選んだ日時を確認画面に表示する", "kind": "reflect-value", "triggerRef": "appointment", "targetRef": "appointment", "expectedResult": "確認画面に選んだ日時が表示される" },
+        { "id": "go-to-confirm", "label": "確認画面へ進む", "kind": "navigate", "triggerRef": "show-confirm", "expectedResult": "確認画面を表示する" }
+      ],
+      "testNote": "候補日時を選ぶために必要な情報があるか"
+    },
+    {
+      "id": "confirm",
+      "name": "内容を確認する",
+      "purpose": "予約内容を確認し、必要なら前画面へ戻る",
+      "blocks": [
+        { "type": "paragraph", "text": "選んだ日時と相談内容を確認します。" },
+        { "type": "value", "key": "appointment", "label": "選択した希望日時", "emptyText": "日時はまだ選択されていません" },
+        { "type": "list", "items": ["相談内容", "連絡方法"] }
+      ],
+      "actions": [{ "id": "return-to-start", "label": "日時を選び直す", "target": "start", "variant": "secondary" }],
+      "operations": [
+        { "id": "revise-appointment", "label": "日時選択画面に戻る", "kind": "navigate", "triggerRef": "return-to-start", "expectedResult": "日時選択画面を表示する" }
+      ],
+      "testNote": "確認に必要な情報が過不足なく並んでいるか"
+    }
+  ]
+}

@@ -2,3 +2,7 @@ __pycache__/
 *.py[cod]
 .DS_Store
 dist/
+node_modules/
+.vite/
+.build/
+.swiftpm/
